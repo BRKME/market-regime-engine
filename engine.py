@@ -285,6 +285,80 @@ def compute_exposure_cap(regime: str, confidence: float) -> float:
 
 
 # ============================================================
+# RISK LEVEL — policy layer (v3.3.1)
+# ============================================================
+
+def compute_risk_level(P: dict, confidence: float) -> dict:
+    """
+    Continuous risk level from regime probabilities.
+    
+    risk_level ∈ [-1.0, +1.0]
+      > +0.30  → Risk-On
+      -0.30…+0.30 → Risk-Neutral
+      < -0.30  → Risk-Off
+    
+    Confidence gate: if confidence < threshold, cap at Neutral (0.0).
+    This prevents false Risk-On when the model is uncertain.
+    """
+    w = cfg.RISK_LEVEL_WEIGHTS
+    
+    raw = sum(P.get(regime, 0) * weight for regime, weight in w.items())
+    risk_level = float(np.clip(raw, -1.0, 1.0))
+    
+    # Confidence gate: low confidence → cannot be Risk-On
+    gated = False
+    if confidence < cfg.RISK_CONFIDENCE_GATE and risk_level > 0.0:
+        risk_level = 0.0
+        gated = True
+    
+    # Classify
+    if risk_level > cfg.RISK_ON_THRESHOLD:
+        risk_state = "RISK_ON"
+    elif risk_level < cfg.RISK_OFF_THRESHOLD:
+        risk_state = "RISK_OFF"
+    else:
+        risk_state = "RISK_NEUTRAL"
+    
+    # Strength label
+    abs_level = abs(risk_level)
+    if abs_level > 0.70:
+        strength = "extreme"
+    elif abs_level > 0.50:
+        strength = "strong"
+    elif abs_level > 0.30:
+        strength = "moderate"
+    else:
+        strength = "mild"
+    
+    # Risk-driven exposure cap
+    risk_exposure = 0.50  # default
+    for lo, hi, cap in cfg.RISK_EXPOSURE_MAP:
+        if lo <= risk_level < hi:
+            risk_exposure = cap
+            break
+    
+    # Build reason list
+    reasons = []
+    if P.get("TRANSITION", 0) > 0.35:
+        reasons.append("TRANSITION dominant")
+    if P.get("BEAR", 0) > 0.35:
+        reasons.append("BEAR pressure")
+    if P.get("BULL", 0) > 0.50:
+        reasons.append("BULL confirmed")
+    if gated:
+        reasons.append("confidence gate active")
+    
+    return {
+        "risk_level": round(risk_level, 4),
+        "risk_state": risk_state,
+        "strength": strength,
+        "risk_exposure_cap": risk_exposure,
+        "confidence_gated": gated,
+        "reasons": reasons,
+    }
+
+
+# ============================================================
 # OPERATIONAL HINTS (v3.3)
 # ============================================================
 
@@ -666,7 +740,13 @@ class RegimeEngine:
         )
 
         # ── 12. Exposure cap ──────────────────────────────────
-        exposure = compute_exposure_cap(current, conf["quality_adjusted"])
+        exposure_regime = compute_exposure_cap(current, conf["quality_adjusted"])
+
+        # ── 12.5. Risk Level (policy layer) ───────────────────
+        risk = compute_risk_level(P, conf["quality_adjusted"])
+        
+        # Final exposure: stricter of regime-based and risk-based
+        exposure = min(exposure_regime, risk["risk_exposure_cap"])
 
         # ── 13. Diagnostics (v3.3) ────────────────────────────
         health = bucket_health(bh)
@@ -698,6 +778,7 @@ class RegimeEngine:
 
         # ── 16. Output ────────────────────────────────────────
         return {
+            "risk": risk,
             "regime": current,
             "probabilities": {r: round(v, 4) for r, v in P.items()},
             "confidence": conf,
@@ -743,6 +824,14 @@ class RegimeEngine:
 
     def _emergency_output(self, reason: str) -> dict:
         return {
+            "risk": {
+                "risk_level": -1.0,
+                "risk_state": "RISK_OFF",
+                "strength": "extreme",
+                "risk_exposure_cap": 0.10,
+                "confidence_gated": False,
+                "reasons": [f"EMERGENCY: {reason}"],
+            },
             "regime": "TRANSITION",
             "probabilities": {r: 0.25 for r in cfg.REGIMES},
             "confidence": {"base": 0.0, "quality_adjusted": 0.0,
