@@ -14,9 +14,9 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from config import settings as cfg
-from src.normalization import AdaptiveNormalizer
-from src.buckets import (
+import settings as cfg
+from normalization import AdaptiveNormalizer
+from buckets import (
     compute_momentum, compute_stability, compute_rotation,
     compute_sentiment, compute_macro, compute_cross_asset,
     compute_realized_vol, rolling_correlation
