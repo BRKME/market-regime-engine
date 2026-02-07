@@ -1,5 +1,6 @@
 """
 Telegram Bot — sends regime engine output as formatted messages.
+Risk Level displayed first as policy-level signal.
 """
 
 import os
@@ -24,25 +25,47 @@ REGIME_LABEL = {
     "TRANSITION": "TRANSITION ⏳",
 }
 
+RISK_STATE_EMOJI = {
+    "RISK_ON": "🟢",
+    "RISK_NEUTRAL": "🟡",
+    "RISK_OFF": "🔴",
+}
 
-def make_bar(value: float, width: int = 12) -> str:
-    """Visual bar: ████░░░░"""
-    filled = int(abs(value) * width)
-    empty = width - filled
-    sign = "+" if value >= 0 else "-"
-    return f"{sign}{abs(value):.2f} {'█' * filled}{'░' * empty}"
+RISK_STATE_LABEL = {
+    "RISK_ON": "RISK-ON",
+    "RISK_NEUTRAL": "RISK-NEUTRAL",
+    "RISK_OFF": "RISK-OFF",
+}
+
+
+def risk_bar(level: float, width: int = 16) -> str:
+    """
+    Visual risk bar: ████████|░░░░░░░░
+    Center = 0. Left = Risk-Off, Right = Risk-On.
+    """
+    half = width // 2
+    if level >= 0:
+        left = "░" * half
+        filled = int(level * half)
+        right = "█" * filled + "░" * (half - filled)
+    else:
+        filled = int(abs(level) * half)
+        left = "░" * (half - filled) + "█" * filled
+        right = "░" * half
+    return f"  OFF {left}|{right} ON"
 
 
 def format_probability_bar(regime: str, prob: float, width: int = 12) -> str:
     filled = int(prob * width)
     empty = width - filled
-    return f"  {regime:<6} {'█' * filled}{'░' * empty} {prob:.2f}"
+    return f"    {regime:<6} {'█' * filled}{'░' * empty} {prob:.2f}"
 
 
 def format_output(output: dict) -> str:
-    """Format engine output as Telegram message (MarkdownV2-safe plain text)."""
-    regime = output["regime"]
-    probs = output["probabilities"]
+    """Format engine output as Telegram message."""
+    risk = output.get("risk", {})
+    regime = output.get("regime", "?")
+    probs = output.get("probabilities", {})
     conf = output.get("confidence", {})
     buckets = output.get("buckets", {})
     hints = output.get("operational_hints", {})
@@ -50,20 +73,63 @@ def format_output(output: dict) -> str:
     flags = output.get("risk_flags", [])
     exposure = output.get("exposure_cap", 0)
 
-    emoji = REGIME_EMOJI.get(regime, "❓")
-    label = REGIME_LABEL.get(regime, regime)
-
     btc_price = meta.get("btc_price")
     btc_str = f"${btc_price:,.0f}" if btc_price else "N/A"
 
     lines = []
+
+    # ── Header ────────────────────────────────────────
     lines.append("═" * 34)
     lines.append(f"  REGIME ENGINE v3.3")
     lines.append(f"  BTC: {btc_str}")
     lines.append("═" * 34)
+
+    # ── RISK LEVEL — top priority ─────────────────────
+    risk_level = risk.get("risk_level", 0)
+    risk_state = risk.get("risk_state", "RISK_NEUTRAL")
+    risk_strength = risk.get("strength", "?")
+    risk_emoji = RISK_STATE_EMOJI.get(risk_state, "❓")
+    risk_label = RISK_STATE_LABEL.get(risk_state, risk_state)
+    risk_exp = risk.get("risk_exposure_cap", 0)
+
+    lines.append("")
+    lines.append(f"  {risk_emoji} {risk_label}  ({risk_strength})")
+    lines.append(f"  Risk Level: {risk_level:+.2f}")
+    lines.append(risk_bar(risk_level))
     lines.append("")
 
-    # Regime
+    # Policy block
+    lines.append("  Policy:")
+    lines.append(f"    Max exposure: {risk_exp:.0%}")
+
+    if risk_level < -0.50:
+        lines.append("    Leverage: PROHIBITED")
+        lines.append("    LP: exit or stables only")
+    elif risk_level < -0.30:
+        lines.append("    Leverage: PROHIBITED")
+        lines.append("    LP: narrow or reduce")
+    elif risk_level < 0.30:
+        lines.append("    Leverage: cautious (≤1.5x)")
+        lines.append("    LP: moderate range")
+    else:
+        lines.append("    Leverage: available (≤2x)")
+        lines.append("    LP: wide range ok")
+
+    if risk.get("confidence_gated"):
+        lines.append("    ⚠ Confidence gate active")
+
+    # Risk reasons
+    reasons = risk.get("reasons", [])
+    if reasons:
+        lines.append(f"    Reason: {', '.join(reasons)}")
+
+    # ── Regime detail ─────────────────────────────────
+    lines.append("")
+    lines.append("─" * 34)
+
+    emoji = REGIME_EMOJI.get(regime, "❓")
+    label = REGIME_LABEL.get(regime, regime)
+
     lines.append(f"  {emoji} Regime: {label}")
     lines.append(f"  📊 Confidence: {conf.get('quality_adjusted', 0):.2f}")
     lines.append(f"  📅 Days in regime: {meta.get('days_in_regime', '?')}")
@@ -87,13 +153,13 @@ def format_output(output: dict) -> str:
     # Confidence breakdown
     churn = conf.get("churn_penalty", 1.0)
     switches = conf.get("switches_30d", 0)
-    lines.append(f"  Confidence detail:")
+    lines.append(f"  Confidence:")
     lines.append(f"    Base:  {conf.get('base', 0):.2f}")
     lines.append(f"    Adj:   {conf.get('quality_adjusted', 0):.2f}")
     lines.append(f"    Churn: {churn:.2f} ({switches} sw/30d)")
     lines.append("")
 
-    # Operational hints
+    # Strategy hints
     strategy = hints.get("strategy_class", "?")
     lp_mode = hints.get("suggested_lp_mode", "?")
     urgency = hints.get("rebalance_urgency", "?")
@@ -101,34 +167,34 @@ def format_output(output: dict) -> str:
     lines.append(f"  📌 LP mode: {lp_mode}")
     lines.append(f"  ⚡ Rebalance: {urgency}")
 
-    # Range sub-type if applicable
     if "range_type" in hints:
-        lines.append(f"  📐 Range type: {hints['range_type']}")
+        lines.append(f"  📐 Range: {hints['range_type']}")
     if "breakout_proximity" in hints:
-        lines.append(f"  🎯 Breakout: {hints['breakout_proximity']} ({hints.get('breakout_direction', '?')})")
+        lines.append(f"  🎯 Breakout: {hints['breakout_proximity']} "
+                     f"({hints.get('breakout_direction', '?')})")
 
-    lines.append("")
     lines.append(f"  🛡 Exposure cap: {exposure:.0%}")
 
     # Flags
     if flags:
         lines.append("")
         lines.append("  ⚠️ Flags:")
-        for f in flags[:5]:  # limit to 5
+        for f in flags[:5]:
             lines.append(f"    • {f}")
 
-    # Vol and normalization
+    # Diagnostics
     vol_z = meta.get("vol_z", 0)
     norm_info = output.get("normalization", {})
     lines.append("")
-    lines.append(f"  Vol z: {vol_z:.2f} | T: {meta.get('temperature', 1):.1f} | α: {meta.get('smoothing_alpha', 0.3):.1f}")
+    lines.append(f"  Vol_z: {vol_z:.2f} | T: {meta.get('temperature', 1):.1f} "
+                 f"| α: {meta.get('smoothing_alpha', 0.3):.1f}")
     if norm_info.get("break_active"):
-        lines.append(f"  ⚠️ Structural break active (window: {norm_info.get('price_window', '?')}d)")
+        lines.append(f"  ⚠️ Struct break (window: "
+                     f"{norm_info.get('price_window', '?')}d)")
 
-    # Bucket health
     bh = output.get("bucket_health", {})
     eff_dim = bh.get("effective_dimensionality", "?")
-    lines.append(f"  Bucket health: {eff_dim}/5 dim")
+    lines.append(f"  Bucket dim: {eff_dim}/5")
 
     lines.append("")
     lines.append("═" * 34)
@@ -142,8 +208,7 @@ def send_telegram(output: dict) -> bool:
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
 
     if not token or not chat_id:
-        logger.warning("Telegram credentials not set. Skipping notification.")
-        logger.info("Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in environment.")
+        logger.warning("Telegram credentials not set. Skipping.")
         return False
 
     text = format_output(output)
