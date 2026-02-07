@@ -1,36 +1,47 @@
 {
+  "risk": {
+    "risk_level": -0.8437,
+    "risk_state": "RISK_OFF",
+    "strength": "extreme",
+    "risk_exposure_cap": 0.1,
+    "confidence_gated": false,
+    "reasons": [
+      "TRANSITION dominant",
+      "BEAR pressure"
+    ]
+  },
   "regime": "TRANSITION",
   "probabilities": {
-    "BULL": 0.0433,
-    "BEAR": 0.3973,
+    "BULL": 0.0432,
+    "BEAR": 0.3978,
     "RANGE": 0.0277,
-    "TRANSITION": 0.5317
+    "TRANSITION": 0.5313
   },
   "confidence": {
-    "base": 0.3234,
+    "base": 0.3236,
     "quality_adjusted": 0.10192,
     "churn_penalty": 1.0,
     "switches_30d": 0
   },
   "buckets": {
-    "Momentum": -0.9257,
-    "Stability": -0.9781,
+    "Momentum": -0.919,
+    "Stability": -1.0,
     "Rotation": 0.0,
     "Sentiment": -0.35,
     "Macro": 0.0224
   },
   "bucket_details": {
     "momentum": {
-      "roc_blend_z": -1.986990022140707,
+      "roc_blend_z": -1.8569884049891907,
       "trend_strength_z": -2.6990991988138933,
       "alignment": -1.0,
-      "dtmc_z": -1.948787993787384,
-      "absolute_momentum": -0.7028701785138503
+      "dtmc_z": -1.8333331641879536,
+      "absolute_momentum": -0.6761497253753586
     },
     "stability": {
-      "neg_vol_z": -3.0,
-      "liquidity_z": 1.404537526137181,
-      "depth_z": -1.0789117748491281
+      "neg_vol_z": -2.9963343387175043,
+      "liquidity_z": 0.8104910318893194,
+      "depth_z": -1.3548035715625233
     },
     "rotation": {},
     "sentiment": {
@@ -47,8 +58,8 @@
     }
   },
   "cross_asset": {
-    "corr_BTC_SPX": -0.149,
-    "corr_BTC_Gold": -0.332,
+    "corr_BTC_SPX": -0.107,
+    "corr_BTC_Gold": -0.326,
     "macro_weight_boost": 1.0
   },
   "bucket_health": {
@@ -65,7 +76,7 @@
     "suggested_lp_mode": "reduce_or_exit",
     "rebalance_urgency": "high"
   },
-  "exposure_cap": 0.2,
+  "exposure_cap": 0.1,
   "risk_flags": [
     "DATA_QUALITY_DEGRADED",
     "EXTREME_VOLATILITY"
@@ -77,12 +88,12 @@
   },
   "metadata": {
     "model_version": "3.3",
-    "days_in_regime": 1,
+    "days_in_regime": 2,
     "temperature": 1.5,
     "smoothing_alpha": 0.5,
-    "vol_z": 3.0,
+    "vol_z": 2.9963,
     "data_completeness": 0.75,
-    "timestamp": "2026-02-07T11:37:56.073752",
-    "btc_price": 67917.484375
+    "timestamp": "2026-02-07T19:25:06.248778",
+    "btc_price": 69316.5625
   }
 }
