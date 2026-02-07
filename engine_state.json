@@ -1,0 +1,19 @@
+{
+  "current_regime": "TRANSITION",
+  "days_in_regime": 0,
+  "P_prev": null,
+  "bucket_history": {
+    "Momentum": [],
+    "Stability": [],
+    "Rotation": [],
+    "Sentiment": [],
+    "Macro": []
+  },
+  "regime_log": [],
+  "holds_for": 0,
+  "holds_candidate": null,
+  "btc_dom_history": [],
+  "oi_history": [],
+  "last_run": null,
+  "model_version": "3.3"
+}
