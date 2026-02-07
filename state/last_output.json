@@ -1,0 +1,34 @@
+{
+  "regime": "TRANSITION",
+  "probabilities": {
+    "BULL": 0.25,
+    "BEAR": 0.25,
+    "RANGE": 0.25,
+    "TRANSITION": 0.25
+  },
+  "confidence": {
+    "base": 0.0,
+    "quality_adjusted": 0.0,
+    "churn_penalty": 1.0,
+    "switches_30d": 0
+  },
+  "buckets": {
+    "Momentum": 0.0,
+    "Stability": 0.0,
+    "Rotation": 0.0,
+    "Sentiment": 0.0,
+    "Macro": 0.0
+  },
+  "exposure_cap": 0.3,
+  "risk_flags": [
+    "EMERGENCY: INSUFFICIENT_DATA"
+  ],
+  "operational_hints": {
+    "strategy_class": "defensive",
+    "suggested_lp_mode": "exit"
+  },
+  "metadata": {
+    "model_version": "3.3",
+    "timestamp": "2026-02-07T11:22:49.672815"
+  }
+}
