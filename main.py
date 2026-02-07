@@ -19,9 +19,9 @@ try:
 except ImportError:
     pass
 
-from src.data_pipeline import fetch_all_data
-from src.engine import RegimeEngine, default_state, save_state, STATE_FILE
-from src.telegram_bot import send_telegram, format_output
+from data_pipeline import fetch_all_data
+from engine import RegimeEngine, default_state, save_state, STATE_FILE
+from telegram_bot import send_telegram, format_output
 
 # ── Logging ───────────────────────────────────────────────
 logging.basicConfig(
