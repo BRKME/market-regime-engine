@@ -319,6 +319,45 @@ DIRECT_BULL_BEAR_THRESHOLD = 0.10
 RARE_TRANSITION_MULTIPLIER = 10
 
 # ============================================================
+# RISK LEVEL (policy layer over regime detection)
+# ============================================================
+
+# Weights: Regime → Risk contribution
+# Design: TRANSITION is worst (-1.0), BEAR severe (-0.9),
+#          BULL strong positive (+0.8), RANGE mild positive (+0.4)
+# Sum at uniform P=[0.25]*4 = -0.175 (Neutral) — correct
+RISK_LEVEL_WEIGHTS = {
+    "BULL": +0.80,
+    "RANGE": +0.40,
+    "BEAR": -0.90,
+    "TRANSITION": -1.00,
+}
+
+# Risk state thresholds
+RISK_ON_THRESHOLD = +0.30
+RISK_OFF_THRESHOLD = -0.30
+
+# Confidence gate: if confidence < this, risk_level capped at 0 (Neutral)
+# Prevents false Risk-On when model is uncertain
+RISK_CONFIDENCE_GATE = 0.15
+
+# Risk Level → Exposure override (takes priority over regime-based exposure)
+RISK_EXPOSURE_MAP = [
+    (-1.0, -0.60, 0.10),  # deep Risk-Off → 10% max
+    (-0.60, -0.30, 0.20),  # Risk-Off → 20% max
+    (-0.30, +0.30, 0.50),  # Neutral → 50% max
+    (+0.30, +0.60, 0.70),  # Risk-On → 70% max
+    (+0.60, +1.01, 0.80),  # Strong Risk-On → 80% max
+]
+
+# Risk Level labels
+RISK_STATE_LABELS = {
+    "RISK_ON": "🟢 RISK-ON",
+    "RISK_NEUTRAL": "🟡 RISK-NEUTRAL",
+    "RISK_OFF": "🔴 RISK-OFF",
+}
+
+# ============================================================
 # REGIMES LIST
 # ============================================================
 
