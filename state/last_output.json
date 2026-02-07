@@ -1,34 +1,88 @@
 {
   "regime": "TRANSITION",
   "probabilities": {
-    "BULL": 0.25,
-    "BEAR": 0.25,
-    "RANGE": 0.25,
-    "TRANSITION": 0.25
+    "BULL": 0.0433,
+    "BEAR": 0.3973,
+    "RANGE": 0.0277,
+    "TRANSITION": 0.5317
   },
   "confidence": {
-    "base": 0.0,
-    "quality_adjusted": 0.0,
+    "base": 0.3234,
+    "quality_adjusted": 0.10192,
     "churn_penalty": 1.0,
     "switches_30d": 0
   },
   "buckets": {
-    "Momentum": 0.0,
-    "Stability": 0.0,
+    "Momentum": -0.9257,
+    "Stability": -0.9781,
     "Rotation": 0.0,
-    "Sentiment": 0.0,
-    "Macro": 0.0
+    "Sentiment": -0.35,
+    "Macro": 0.0224
   },
-  "exposure_cap": 0.3,
-  "risk_flags": [
-    "EMERGENCY: INSUFFICIENT_DATA"
-  ],
+  "bucket_details": {
+    "momentum": {
+      "roc_blend_z": -1.986990022140707,
+      "trend_strength_z": -2.6990991988138933,
+      "alignment": -1.0,
+      "dtmc_z": -1.948787993787384,
+      "absolute_momentum": -0.7028701785138503
+    },
+    "stability": {
+      "neg_vol_z": -3.0,
+      "liquidity_z": 1.404537526137181,
+      "depth_z": -1.0789117748491281
+    },
+    "rotation": {},
+    "sentiment": {
+      "fg_score": -1.0,
+      "funding_score": 0.0,
+      "oi_score": 0.0,
+      "fg_raw": 6
+    },
+    "macro": {
+      "dollar_signal": 0.5367184120280504,
+      "rate_signal": 0.026783573820076272,
+      "yc_z": 1.6502325888706004,
+      "m2_z": -1.9013507445381015
+    }
+  },
+  "cross_asset": {
+    "corr_BTC_SPX": -0.149,
+    "corr_BTC_Gold": -0.332,
+    "macro_weight_boost": 1.0
+  },
+  "bucket_health": {
+    "effective_dimensionality": 5,
+    "flags": [],
+    "pairwise_correlations": {}
+  },
+  "regime_dynamics": {
+    "transition_matrix": {},
+    "switches_30d": 0
+  },
   "operational_hints": {
     "strategy_class": "defensive",
-    "suggested_lp_mode": "exit"
+    "suggested_lp_mode": "reduce_or_exit",
+    "rebalance_urgency": "high"
+  },
+  "exposure_cap": 0.2,
+  "risk_flags": [
+    "DATA_QUALITY_DEGRADED",
+    "EXTREME_VOLATILITY"
+  ],
+  "normalization": {
+    "price_window": 30,
+    "macro_window": 30,
+    "break_active": true
   },
   "metadata": {
     "model_version": "3.3",
-    "timestamp": "2026-02-07T11:22:49.672815"
+    "days_in_regime": 1,
+    "temperature": 1.5,
+    "smoothing_alpha": 0.5,
+    "vol_z": 3.0,
+    "data_completeness": 0.75,
+    "timestamp": "2026-02-07T11:37:56.073752",
+    "btc_price": 67917.484375
   }
 }

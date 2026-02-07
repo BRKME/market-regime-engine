@@ -1,0 +1,38 @@
+{
+  "current_regime": "TRANSITION",
+  "days_in_regime": 1,
+  "P_prev": {
+    "BULL": 0.04325865286910498,
+    "BEAR": 0.3973445511579869,
+    "RANGE": 0.027738737466940354,
+    "TRANSITION": 0.5316580585059679
+  },
+  "bucket_history": {
+    "Momentum": [
+      -0.9257175446284626
+    ],
+    "Stability": [
+      -0.9781398095642689
+    ],
+    "Rotation": [
+      0.0
+    ],
+    "Sentiment": [
+      -0.35
+    ],
+    "Macro": [
+      0.02242024870302889
+    ]
+  },
+  "regime_log": [
+    "TRANSITION"
+  ],
+  "holds_for": 1,
+  "holds_candidate": "TRANSITION",
+  "last_run": "2026-02-07T11:37:56.073516",
+  "model_version": "3.3",
+  "btc_dom_history": [
+    56.581720674646895
+  ],
+  "oi_history": []
+}
