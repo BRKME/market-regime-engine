@@ -3,7 +3,7 @@ Normalization — z-score with structural break detection (v3.3).
 """
 
 import numpy as np
-from config import settings as cfg
+import settings as cfg
 
 
 def z_score(values: np.ndarray, window: int = None) -> float:
