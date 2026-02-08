@@ -1,6 +1,6 @@
 {
   "risk": {
-    "risk_level": -0.8338,
+    "risk_level": -0.8293,
     "risk_state": "RISK_OFF",
     "strength": "extreme",
     "risk_exposure_cap": 0.1,
@@ -12,19 +12,19 @@
   },
   "regime": "TRANSITION",
   "probabilities": {
-    "BULL": 0.0453,
-    "BEAR": 0.42,
-    "RANGE": 0.0305,
-    "TRANSITION": 0.5042
+    "BULL": 0.0464,
+    "BEAR": 0.4286,
+    "RANGE": 0.0317,
+    "TRANSITION": 0.4933
   },
   "confidence": {
-    "base": 0.3103,
-    "quality_adjusted": 0.10996999999999998,
+    "base": 0.3049,
+    "quality_adjusted": 0.11606,
     "churn_penalty": 1.0,
     "switches_30d": 0
   },
   "buckets": {
-    "Momentum": -0.9222,
+    "Momentum": -0.9147,
     "Stability": -1.0,
     "Rotation": 0.0,
     "Sentiment": -0.35,
@@ -32,16 +32,16 @@
   },
   "bucket_details": {
     "momentum": {
-      "roc_blend_z": -1.6870859696746223,
+      "roc_blend_z": -1.538463274538287,
       "trend_strength_z": -2.6641812384257273,
       "alignment": -1.0,
-      "dtmc_z": -1.6355094986023833,
-      "absolute_momentum": -0.6888675078297033
+      "dtmc_z": -1.5022433197821972,
+      "absolute_momentum": -0.6586841971042112
     },
     "stability": {
-      "neg_vol_z": -2.5559060338926765,
-      "liquidity_z": 0.04862297191357746,
-      "depth_z": -1.5964470707114133
+      "neg_vol_z": -2.591352949134073,
+      "liquidity_z": -0.4632298883415697,
+      "depth_z": -1.8186683473611023
     },
     "rotation": {},
     "sentiment": {
@@ -58,8 +58,8 @@
     }
   },
   "cross_asset": {
-    "corr_BTC_SPX": -0.016,
-    "corr_BTC_Gold": -0.063,
+    "corr_BTC_SPX": 0.032,
+    "corr_BTC_Gold": -0.05,
     "macro_weight_boost": 1.0
   },
   "bucket_health": {
@@ -88,12 +88,33 @@
   },
   "metadata": {
     "model_version": "3.3",
-    "days_in_regime": 3,
+    "days_in_regime": 4,
     "temperature": 1.5,
     "smoothing_alpha": 0.5,
-    "vol_z": 2.5559,
+    "vol_z": 2.5914,
     "data_completeness": 0.75,
-    "timestamp": "2026-02-08T07:39:45.745692",
-    "btc_price": 69487.7890625
+    "timestamp": "2026-02-08T16:24:40.344081",
+    "btc_price": 71087.453125
+  },
+  "lp_policy": {
+    "lp_regime": "MEAN_REVERT",
+    "risk_lp": 0.41,
+    "risk_quadrant": "Q2",
+    "fee_variance_ratio": 1.88,
+    "uncertainty_value": 1.0,
+    "trend_persistence": 0.506,
+    "vol_structure": "RANGE_DOMINANT",
+    "max_exposure": 0.4,
+    "range_width": "wide",
+    "rebalance": "cautious",
+    "hedge_recommended": true,
+    "signals": [
+      "High uncertainty \u2192 fee opportunity",
+      "High trend persistence \u2192 IL risk",
+      "Range-dominant volatility",
+      "Q2: Dir risk high, LP opportunity exists",
+      "Structural break \u2192 conservative"
+    ],
+    "confidence": 0.72
   }
 }
