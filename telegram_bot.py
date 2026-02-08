@@ -1,11 +1,14 @@
 """
 Telegram Bot — sends regime engine output as formatted messages.
 Risk Level displayed first as policy-level signal.
+LP Intelligence v2.0.1 integrated.
 """
 
 import os
 import logging
 import requests
+
+import settings as cfg
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +58,83 @@ def risk_bar(level: float, width: int = 16) -> str:
     return f"  OFF {left}|{right} ON"
 
 
+def lp_risk_bar(level: float, width: int = 8) -> str:
+    """
+    LP risk bar: BAD ░░░░████ GOOD
+    -1 = bad, +1 = good for LP
+    """
+    pct = (level + 1) / 2  # map [-1,1] to [0,1]
+    filled = int(pct * width)
+    empty = width - filled
+    if level < 0:
+        bar = "░" * empty + "█" * filled
+    else:
+        bar = "█" * filled + "░" * empty
+    return f"  BAD {bar} GOOD"
+
+
 def format_probability_bar(regime: str, prob: float, width: int = 12) -> str:
     filled = int(prob * width)
     empty = width - filled
     return f"    {regime:<6} {'█' * filled}{'░' * empty} {prob:.2f}"
 
 
-def format_output(output: dict) -> str:
+def format_lp_block(lp_policy) -> str:
+    """
+    Format LP Policy as Telegram block.
+    Integrated inside main message.
+    """
+    if lp_policy is None:
+        return ""
+    
+    lines = []
+    lines.append("─" * 34)
+    lines.append("  💧 LP INTELLIGENCE v2.0.1")
+    lines.append("─" * 34)
+    
+    # LP Regime with emoji
+    regime_emoji = cfg.LP_REGIME_EMOJI.get(lp_policy.lp_regime.value, "📊")
+    lines.append(f"  {regime_emoji} LP Regime: {lp_policy.lp_regime.value}")
+    
+    # Risk LP
+    lines.append(f"  Risk LP: {lp_policy.risk_lp:+.2f}")
+    lines.append(lp_risk_bar(lp_policy.risk_lp))
+    
+    # Quadrant
+    quadrant_desc = cfg.LP_QUADRANT_DESC.get(
+        lp_policy.risk_quadrant.value, 
+        lp_policy.risk_quadrant.value
+    )
+    lines.append(f"  Quadrant: {quadrant_desc}")
+    
+    # Fee/Variance ratio
+    lines.append(f"  Fee/Var: {lp_policy.fee_variance_ratio:.1f}x")
+    lines.append("")
+    
+    # Policy
+    lines.append("  LP Policy:")
+    lines.append(f"    Exposure: {int(lp_policy.max_exposure * 100)}%")
+    lines.append(f"    Range: {lp_policy.range_width}")
+    lines.append(f"    Rebalance: {lp_policy.rebalance}")
+    hedge_text = "recommended" if lp_policy.hedge_recommended else "optional"
+    lines.append(f"    Hedge: {hedge_text}")
+    lines.append("")
+    
+    # Signals (top 4)
+    lines.append("  Signals:")
+    for sig in lp_policy.signals[:4]:
+        lines.append(f"    • {sig}")
+    
+    # Q2 note (key insight)
+    if lp_policy.risk_quadrant.value == "Q2":
+        lines.append("")
+        lines.append("  💡 Note: Directional risk is high,")
+        lines.append("     but LP payoff remains positive.")
+    
+    return "\n".join(lines)
+
+
+def format_output(output: dict, lp_policy=None) -> str:
     """Format engine output as Telegram message."""
     risk = output.get("risk", {})
     regime = output.get("regime", "?")
@@ -98,22 +171,18 @@ def format_output(output: dict) -> str:
     lines.append(risk_bar(risk_level))
     lines.append("")
 
-    # Policy block
+    # Policy block (directional)
     lines.append("  Policy:")
     lines.append(f"    Max exposure: {risk_exp:.0%}")
 
     if risk_level < -0.50:
         lines.append("    Leverage: PROHIBITED")
-        lines.append("    LP: exit or stables only")
     elif risk_level < -0.30:
         lines.append("    Leverage: PROHIBITED")
-        lines.append("    LP: narrow or reduce")
     elif risk_level < 0.30:
         lines.append("    Leverage: cautious (≤1.5x)")
-        lines.append("    LP: moderate range")
     else:
         lines.append("    Leverage: available (≤2x)")
-        lines.append("    LP: wide range ok")
 
     if risk.get("confidence_gated"):
         lines.append("    ⚠ Confidence gate active")
@@ -122,6 +191,11 @@ def format_output(output: dict) -> str:
     reasons = risk.get("reasons", [])
     if reasons:
         lines.append(f"    Reason: {', '.join(reasons)}")
+
+    # ── LP INTELLIGENCE BLOCK ─────────────────────────
+    if lp_policy is not None:
+        lines.append("")
+        lines.append(format_lp_block(lp_policy))
 
     # ── Regime detail ─────────────────────────────────
     lines.append("")
@@ -161,10 +235,8 @@ def format_output(output: dict) -> str:
 
     # Strategy hints
     strategy = hints.get("strategy_class", "?")
-    lp_mode = hints.get("suggested_lp_mode", "?")
     urgency = hints.get("rebalance_urgency", "?")
     lines.append(f"  💡 Strategy: {strategy}")
-    lines.append(f"  📌 LP mode: {lp_mode}")
     lines.append(f"  ⚡ Rebalance: {urgency}")
 
     if "range_type" in hints:
@@ -202,7 +274,7 @@ def format_output(output: dict) -> str:
     return "\n".join(lines)
 
 
-def send_telegram(output: dict) -> bool:
+def send_telegram(output: dict, lp_policy=None) -> bool:
     """Send formatted output to Telegram."""
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -211,7 +283,7 @@ def send_telegram(output: dict) -> bool:
         logger.warning("Telegram credentials not set. Skipping.")
         return False
 
-    text = format_output(output)
+    text = format_output(output, lp_policy)
 
     # Telegram limit: 4096 chars
     if len(text) > 4096:
