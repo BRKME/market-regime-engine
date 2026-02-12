@@ -1,11 +1,12 @@
 """
-Market Regime Engine v3.3 + LP Intelligence v2.0.1 — Entry Point
+Market Regime Engine v3.3 + LP Intelligence v2.0.1 + Asset Allocation v1.3.1
 
 Usage:
-  python main.py              # Full run: fetch data → compute → LP policy → send Telegram
+  python main.py              # Full run: regime → LP → allocation → Telegram
   python main.py --dry-run    # Compute and print, no Telegram
   python main.py --reset      # Reset state to defaults
   python main.py --no-lp      # Skip LP policy computation
+  python main.py --no-aa      # Skip Asset Allocation computation
 """
 
 import sys
@@ -24,6 +25,7 @@ from data_pipeline import fetch_all_data
 from engine import RegimeEngine, default_state, save_state, STATE_FILE
 from telegram_bot import send_telegram, format_output
 from lp_policy_engine import compute_lp_policy
+from asset_allocation import compute_btc_eth_allocation
 
 # ── Logging ───────────────────────────────────────────────
 logging.basicConfig(
@@ -46,10 +48,13 @@ def main():
 
     dry_run = "--dry-run" in args
     skip_lp = "--no-lp" in args
+    skip_aa = "--no-aa" in args
 
     # ── 1. Fetch data ─────────────────────────────────────
     logger.info("=" * 50)
-    logger.info("MARKET REGIME ENGINE v3.3 + LP INTELLIGENCE v2.0.1")
+    logger.info("MARKET REGIME ENGINE v3.3")
+    logger.info("+ LP INTELLIGENCE v2.0.1")
+    logger.info("+ ASSET ALLOCATION v1.3.1")
     logger.info("=" * 50)
 
     raw_data = fetch_all_data()
@@ -70,8 +75,31 @@ def main():
             logger.error(f"LP Policy computation failed: {e}")
             lp_policy = None
 
-    # ── 4. Print output ───────────────────────────────────
-    print("\n" + format_output(output, lp_policy))
+    # ── 4. Compute Asset Allocation ───────────────────────
+    allocation = None
+    if not skip_aa:
+        try:
+            allocation = compute_btc_eth_allocation(output)
+            
+            btc_action = allocation["btc"]["action"]
+            eth_action = allocation["eth"]["action"]
+            btc_size = allocation["btc"]["size_pct"]
+            eth_size = allocation["eth"]["size_pct"]
+            
+            logger.info(f"Asset Allocation: BTC={btc_action} ({btc_size:+.0%}), "
+                       f"ETH={eth_action} ({eth_size:+.0%})")
+            
+            # Highlight tail risk
+            if allocation["meta"].get("tail_risk_active"):
+                polarity = allocation["meta"].get("tail_polarity", "downside")
+                logger.warning(f"⚠️ TAIL RISK ({polarity.upper()}): Emergency action triggered!")
+                
+        except Exception as e:
+            logger.error(f"Asset Allocation computation failed: {e}")
+            allocation = None
+
+    # ── 5. Print output ───────────────────────────────────
+    print("\n" + format_output(output, lp_policy, allocation))
 
     # Save full JSON output for debugging
     output_file = Path("state/last_output.json")
@@ -88,6 +116,7 @@ def main():
             "trend_persistence": lp_policy.trend_persistence,
             "vol_structure": lp_policy.vol_structure,
             "max_exposure": lp_policy.max_exposure,
+            "effective_exposure": lp_policy.effective_exposure,
             "range_width": lp_policy.range_width,
             "rebalance": lp_policy.rebalance,
             "hedge_recommended": lp_policy.hedge_recommended,
@@ -95,17 +124,21 @@ def main():
             "confidence": lp_policy.confidence,
         }
     
+    # Add allocation to output for JSON
+    if allocation:
+        output["asset_allocation"] = allocation
+    
     with open(output_file, "w") as f:
         json.dump(output, f, indent=2, default=str)
     logger.info(f"Full output saved to {output_file}")
 
-    # ── 5. Send Telegram ──────────────────────────────────
+    # ── 6. Send Telegram ──────────────────────────────────
     if dry_run:
         logger.info("Dry run — skipping Telegram")
     else:
-        send_telegram(output, lp_policy)
+        send_telegram(output, lp_policy, allocation)
 
-    # ── 6. Summary ────────────────────────────────────────
+    # ── 7. Summary ────────────────────────────────────────
     regime = output["regime"]
     risk_dir = output["risk"]["risk_level"]
     conf = output["confidence"]["quality_adjusted"]
@@ -118,11 +151,24 @@ def main():
         logger.info(f"LP: {lp_policy.lp_regime.value} | "
                    f"Risk(lp): {lp_policy.risk_lp:+.2f} | "
                    f"Quadrant: {lp_policy.risk_quadrant.value} | "
-                   f"Exposure: {int(lp_policy.max_exposure * 100)}%")
+                   f"Effective: {int(lp_policy.effective_exposure * 100)}%")
         
         # Highlight Q2 opportunity
         if lp_policy.risk_quadrant.value == "Q2":
             logger.info("💡 Q2 INSIGHT: Directional risk high, but LP opportunity exists!")
+            logger.info(f"   LP book: {int(lp_policy.max_exposure * 100)}% → "
+                       f"Risk-adjusted: {int(lp_policy.effective_exposure * 100)}%")
+    
+    if allocation:
+        btc = allocation["btc"]
+        eth = allocation["eth"]
+        logger.info(f"ALLOCATION: BTC={btc['action']} ({btc['size_pct']:+.0%}) | "
+                   f"ETH={eth['action']} ({eth['size_pct']:+.0%})")
+        
+        if btc.get("blocked_by"):
+            logger.info(f"   BTC blocked by: {btc['blocked_by']}")
+        if eth.get("blocked_by"):
+            logger.info(f"   ETH blocked by: {eth['blocked_by']}")
     
     if flags:
         logger.info(f"Flags: {len(flags)}")
