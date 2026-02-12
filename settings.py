@@ -452,3 +452,46 @@ LP_QUADRANT_DESC = {
     "Q3": "Q3: Prefer spot",
     "Q4": "Q4: Defensive",
 }
+
+# ============================================================
+# ASSET ALLOCATION POLICY v1.3.1 — Configuration
+# ============================================================
+
+# ── Confidence Gates ──────────────────────────────────────
+AA_CONF_NO_ACTION = 0.40      # Below this: HOLD only
+AA_CONF_ACTION = 0.50         # Above this: BUY/SELL allowed
+AA_CONF_STRONG_SELL = 0.60    # Above this: STRONG_SELL allowed
+AA_CONF_STRONG_BUY = 0.70     # Above this: STRONG_BUY allowed
+
+# ── Momentum Thresholds ───────────────────────────────────
+AA_MOM_STRONG = 0.50          # Threshold for STRONG actions
+AA_MOM_WEAK = 0.0             # Threshold for regular actions
+
+# ── Risk Thresholds ───────────────────────────────────────
+AA_RISK_TRANSITION_SELL = -0.30  # TRANSITION + risk below this = SELL
+
+# ── Anti-Churn Protection ─────────────────────────────────
+AA_MAX_ACTIONS_30D = 3              # Max non-HOLD actions per 30 days
+AA_COOLDOWN_BUY_AFTER_SELL = 7      # Days to wait for BUY after SELL
+AA_COOLDOWN_SELL_AFTER_BUY = 3      # Days to wait for SELL after BUY
+AA_COOLDOWN_STRONG = 14             # Days between STRONG actions
+
+# ── Position Sizes (BTC) ──────────────────────────────────
+AA_SIZE_BTC_STRONG_BUY = +0.20      # +20% of portfolio
+AA_SIZE_BTC_BUY = +0.10             # +10% of portfolio
+AA_SIZE_BTC_SELL = -0.15            # -15% of position
+AA_SIZE_BTC_STRONG_SELL = -0.50     # -50% of position
+
+# ── Position Sizes (ETH) ──────────────────────────────────
+AA_SIZE_ETH_BUY = +0.05             # +5% of portfolio
+AA_SIZE_ETH_SELL = -0.20            # -20% of position
+AA_SIZE_ETH_STRONG_SELL = -0.70     # -70% of position
+
+# ── Action Emoji ──────────────────────────────────────────
+AA_ACTION_EMOJI = {
+    "STRONG_BUY": "🟢🟢",
+    "BUY": "🟢",
+    "HOLD": "⚪️",
+    "SELL": "🔴",
+    "STRONG_SELL": "🔴🔴",
+}
