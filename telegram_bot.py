@@ -111,12 +111,18 @@ def format_lp_block(lp_policy) -> str:
     lines.append(f"  Fee/Var: {lp_policy.fee_variance_ratio:.1f}x")
     lines.append("")
     
-    # Policy
+    # Policy with CLEAR separation
     lines.append("  LP Policy:")
-    lines.append(f"    Exposure: {int(lp_policy.max_exposure * 100)}%")
+    lines.append(f"    LP book exposure: {int(lp_policy.max_exposure * 100)}%")
+    lines.append(f"    Risk-adjusted: {int(lp_policy.effective_exposure * 100)}%")
     lines.append(f"    Range: {lp_policy.range_width}")
     lines.append(f"    Rebalance: {lp_policy.rebalance}")
-    hedge_text = "recommended" if lp_policy.hedge_recommended else "optional"
+    
+    # Hedge: conditional mandatory in Q2 with high dir risk
+    if lp_policy.hedge_recommended:
+        hedge_text = "conditional mandatory"
+    else:
+        hedge_text = "optional"
     lines.append(f"    Hedge: {hedge_text}")
     lines.append("")
     
@@ -130,11 +136,89 @@ def format_lp_block(lp_policy) -> str:
         lines.append("")
         lines.append("  💡 Note: Directional risk is high,")
         lines.append("     but LP payoff remains positive.")
+        lines.append(f"     Effective exposure capped at {int(lp_policy.effective_exposure * 100)}%")
     
     return "\n".join(lines)
 
 
-def format_output(output: dict, lp_policy=None) -> str:
+# ── Asset Allocation Block ────────────────────────────────
+
+AA_ACTION_EMOJI = {
+    "STRONG_BUY": "🟢🟢",
+    "BUY": "🟢",
+    "HOLD": "⚪️",
+    "SELL": "🔴",
+    "STRONG_SELL": "🔴🔴",
+}
+
+
+def format_allocation_block(allocation: dict) -> str:
+    """
+    Format Asset Allocation as Telegram block.
+    """
+    if allocation is None:
+        return ""
+    
+    btc = allocation.get("btc", {})
+    eth = allocation.get("eth", {})
+    meta = allocation.get("meta", {})
+    
+    lines = []
+    lines.append("─" * 34)
+    lines.append("  📊 ASSET ALLOCATION v1.3.1")
+    lines.append("─" * 34)
+    
+    # BTC
+    btc_action = btc.get("action", "HOLD")
+    btc_size = btc.get("size_pct", 0)
+    btc_emoji = AA_ACTION_EMOJI.get(btc_action, "⚪️")
+    btc_blocked = btc.get("blocked_by")
+    
+    size_str = f"{btc_size:+.0%}" if btc_size != 0 else "0%"
+    lines.append(f"  BTC: {btc_emoji} {btc_action} ({size_str})")
+    if btc_blocked:
+        lines.append(f"       Blocked: {btc_blocked}")
+    
+    # ETH
+    eth_action = eth.get("action", "HOLD")
+    eth_size = eth.get("size_pct", 0)
+    eth_emoji = AA_ACTION_EMOJI.get(eth_action, "⚪️")
+    eth_blocked = eth.get("blocked_by")
+    
+    size_str = f"{eth_size:+.0%}" if eth_size != 0 else "0%"
+    lines.append(f"  ETH: {eth_emoji} {eth_action} ({size_str})")
+    if eth_blocked:
+        lines.append(f"       Blocked: {eth_blocked}")
+    
+    lines.append("")
+    
+    # Stance
+    stance = btc.get("stance", "RISK_NEUTRAL")
+    conf = btc.get("confidence", 0)
+    lines.append(f"  Stance: {stance}")
+    lines.append(f"  Confidence: {conf:.2f}")
+    
+    # Tail risk warning
+    if meta.get("tail_risk_active"):
+        polarity = meta.get("tail_polarity", "downside")
+        lines.append("")
+        if polarity == "downside":
+            lines.append("  ⚠️ DOWNSIDE TAIL RISK ACTIVE")
+        else:
+            lines.append("  ⚠️ UPSIDE TAIL RISK ACTIVE")
+    
+    # Top reasoning (first 2)
+    btc_reasons = btc.get("reasoning", [])
+    if btc_reasons:
+        lines.append("")
+        lines.append("  Reasoning:")
+        for r in btc_reasons[:2]:
+            lines.append(f"    • {r}")
+    
+    return "\n".join(lines)
+
+
+def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     """Format engine output as Telegram message."""
     risk = output.get("risk", {})
     regime = output.get("regime", "?")
@@ -196,6 +280,11 @@ def format_output(output: dict, lp_policy=None) -> str:
     if lp_policy is not None:
         lines.append("")
         lines.append(format_lp_block(lp_policy))
+
+    # ── ASSET ALLOCATION BLOCK ────────────────────────
+    if allocation is not None:
+        lines.append("")
+        lines.append(format_allocation_block(allocation))
 
     # ── Regime detail ─────────────────────────────────
     lines.append("")
@@ -274,7 +363,7 @@ def format_output(output: dict, lp_policy=None) -> str:
     return "\n".join(lines)
 
 
-def send_telegram(output: dict, lp_policy=None) -> bool:
+def send_telegram(output: dict, lp_policy=None, allocation=None) -> bool:
     """Send formatted output to Telegram."""
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
@@ -283,7 +372,7 @@ def send_telegram(output: dict, lp_policy=None) -> bool:
         logger.warning("Telegram credentials not set. Skipping.")
         return False
 
-    text = format_output(output, lp_policy)
+    text = format_output(output, lp_policy, allocation)
 
     # Telegram limit: 4096 chars
     if len(text) > 4096:
