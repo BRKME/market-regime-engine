@@ -63,7 +63,8 @@ class LPPolicy:
     vol_structure: str
     
     # Policy parameters
-    max_exposure: float
+    max_exposure: float           # Raw LP exposure (of LP book)
+    effective_exposure: float     # Risk-adjusted effective exposure
     range_width: str
     rebalance: str
     hedge_recommended: bool
@@ -449,10 +450,15 @@ def compute_lp_policy(regime_output: Dict) -> LPPolicy:
     if uncertainty > 0.6:
         signals.append("High uncertainty → fee opportunity")
     
+    # Fix: distinguish directional vs non-directional persistence
     if trend_pers["lp_implication"] == "CHOPPY":
-        signals.append("Low trend persistence")
+        signals.append("Low trend persistence → mean reversion")
     elif trend_pers["lp_implication"] == "TRENDING":
-        signals.append("High trend persistence → IL risk")
+        # Check if it's truly directional or just high local persistence
+        if stability > 0.3:
+            signals.append("High trend persistence → IL risk")
+        else:
+            signals.append("Persistence high but unstable (churn)")
     
     if vol_structure["classification"] == "RANGE_DOMINANT":
         signals.append("Range-dominant volatility")
@@ -473,6 +479,24 @@ def compute_lp_policy(regime_output: Dict) -> LPPolicy:
     # Confidence
     confidence = min(0.95, 0.5 + abs(risk_lp) * 0.3 + (1 - trend_pers["persistence_score"]) * 0.2)
     
+    # ── Step 9: Compute risk-adjusted effective exposure ──
+    # Institutional rule: LP exposure capped by directional risk
+    # effective = raw × risk_adjustment_factor
+    raw_exposure = regime_params["notional"]
+    
+    # Risk adjustment factor: (1 + risk_dir) / 2 maps [-1,+1] to [0,1]
+    # At risk_dir = -0.83: factor = 0.085
+    # At risk_dir = 0: factor = 0.5
+    # At risk_dir = +0.5: factor = 0.75
+    risk_adjustment = (1 + risk_directional) / 2
+    risk_adjustment = max(0.1, min(1.0, risk_adjustment))  # floor at 10%
+    
+    # Q2 bonus: if LP opportunity exists despite directional risk
+    if quadrant == RiskQuadrant.Q2_LP_OPPORTUNITY and risk_lp > 0.3:
+        risk_adjustment = max(risk_adjustment, 0.25)  # minimum 25% in Q2
+    
+    effective_exposure = round(raw_exposure * risk_adjustment, 2)
+    
     # ── Return policy ─────────────────────────────────────
     return LPPolicy(
         lp_regime=lp_regime,
@@ -483,7 +507,8 @@ def compute_lp_policy(regime_output: Dict) -> LPPolicy:
         uncertainty_value=uncertainty,
         trend_persistence=trend_pers["persistence_score"],
         vol_structure=vol_structure["classification"],
-        max_exposure=regime_params["notional"],
+        max_exposure=raw_exposure,
+        effective_exposure=effective_exposure,
         range_width=regime_params["range"],
         rebalance=regime_params["rebalance"],
         hedge_recommended=hedge_recommended,
