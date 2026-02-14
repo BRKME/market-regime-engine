@@ -1,5 +1,5 @@
 """
-Telegram Bot — Action-First UI v1.1
+Telegram Bot — Action-First UI
 One screen → one decision.
 """
 
@@ -159,9 +159,6 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
             primary_reasons.append("tail-risk")
         
         # Secondary reasons (in parentheses)
-        if stab < -0.5:
-            secondary_reasons.append("unstable")
-        
         if conf_adj < 0.30:
             secondary_reasons.append("low confidence")
         
@@ -194,9 +191,9 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         
         # LP header reflects constraint status
         if eff < int(lp_policy.max_exposure * 100) * 0.5:
-            lines.append("💧 LP POLICY (CONSTRAINED)")
+            lines.append("💧 LP POLICY (CONSTRAINED · SECONDARY)")
         else:
-            lines.append("💧 LP POLICY")
+            lines.append("💧 LP POLICY (SECONDARY)")
         
         lines.append("━" * 36)
         
