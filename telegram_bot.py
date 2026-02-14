@@ -1,5 +1,5 @@
 """
-Telegram Bot — Action-First UI
+Telegram Bot — Action-First UI v1.1
 One screen → one decision.
 """
 
@@ -90,7 +90,16 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         phase = f"{days}d mature"
     
     conf_pct = int(conf_adj * 100)
-    lines.append(f"   {phase} · conf {conf_pct}%")
+    
+    # Confidence interpretation
+    if conf_adj < 0.25:
+        conf_label = "LOW"
+    elif conf_adj < 0.50:
+        conf_label = "MEDIUM"
+    else:
+        conf_label = "HIGH"
+    
+    lines.append(f"   {phase} · confidence {conf_label} ({conf_pct}%)")
     
     # Tail risk indicator
     if tail_active:
@@ -133,30 +142,41 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         lines.append(f"BTC: {btc_action} {btc_str}")
         lines.append(f"ETH: {eth_action} {eth_str}")
         
-        # Reasons (compact)
-        reasons = []
+        # Reasons (compact, grouped)
+        primary_reasons = []
+        secondary_reasons = []
+        
         mom = buckets.get("Momentum", 0)
         stab = buckets.get("Stability", 0)
         
+        # Primary reasons
         if mom < -0.5:
-            reasons.append("downtrend")
+            primary_reasons.append("downtrend")
         elif mom > 0.5:
-            reasons.append("uptrend")
-        
-        if stab < -0.5:
-            reasons.append("unstable")
+            primary_reasons.append("uptrend")
         
         if tail_active:
-            reasons.append("tail-risk")
+            primary_reasons.append("tail-risk")
+        
+        # Secondary reasons (in parentheses)
+        if stab < -0.5:
+            secondary_reasons.append("unstable")
         
         if conf_adj < 0.30:
-            reasons.append("low confidence")
+            secondary_reasons.append("low confidence")
         
         if btc.get("blocked_by"):
-            reasons.append(f"blocked: {btc['blocked_by'].lower()}")
+            secondary_reasons.append(f"blocked: {btc['blocked_by'].lower()}")
         
-        if reasons:
-            lines.append(f"   → {', '.join(reasons)}")
+        if primary_reasons or secondary_reasons:
+            reason_str = " + ".join(primary_reasons) if primary_reasons else ""
+            if secondary_reasons:
+                sec_str = ", ".join(secondary_reasons)
+                if reason_str:
+                    reason_str += f" ({sec_str})"
+                else:
+                    reason_str = sec_str
+            lines.append(f"   → {reason_str}")
     
     # ══════════════════════════════════════════════════════
     # LP POLICY (separate)
@@ -171,7 +191,13 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         
         lines.append("")
         lines.append("━" * 36)
-        lines.append("💧 LP POLICY")
+        
+        # LP header reflects constraint status
+        if eff < int(lp_policy.max_exposure * 100) * 0.5:
+            lines.append("💧 LP POLICY (CONSTRAINED)")
+        else:
+            lines.append("💧 LP POLICY")
+        
         lines.append("━" * 36)
         
         lines.append(f"Quadrant: {quadrant}")
@@ -198,13 +224,19 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
             lines.append("capital at risk is capped.")
     
     # ══════════════════════════════════════════════════════
-    # FLAGS (if critical)
+    # FLAGS (if critical) - ordered by severity
     # ══════════════════════════════════════════════════════
     critical_flags = []
+    
+    # Priority 1: Tail risk
     if tail_active:
         critical_flags.append("Tail risk active")
+    
+    # Priority 2: Structure break
     if struct_break:
         critical_flags.append("Market structure break")
+    
+    # Priority 3: Data issues
     if any("DATA" in f for f in flags):
         critical_flags.append("Partial data")
     
