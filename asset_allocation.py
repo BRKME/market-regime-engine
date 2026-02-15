@@ -1,8 +1,13 @@
 """
-Asset Allocation Policy v1.3.1
+Asset Allocation Policy v1.4
 
-Conservative capital preservation policy.
-NOT alpha generation. NOT capital optimizer.
+Conservative capital preservation policy with counter-cyclical logic.
+
+v1.4 Changes:
+- Don't sell in panic (momentum < -0.7 + high vol)
+- Accumulate on fear (extreme panic + deep drawdown)
+- Take profit on greed (euphoria + big rally)
+- Mean reversion in RANGE regime
 
 Trade-offs (documented):
 - TRANSITION = don't play (misses early trends)
@@ -278,10 +283,18 @@ def compute_allocation(
     last_action: Optional[str] = None,
     last_action_date: Optional[date] = None,
     action_history: Optional[List[Tuple[str, date]]] = None,
-    today: Optional[date] = None
+    today: Optional[date] = None,
+    # v1.4 Counter-cyclical parameters
+    vol_z: float = 0.0,
+    returns_30d: float = 0.0,
 ) -> AllocationPolicy:
     """
     Compute asset allocation policy.
+    
+    v1.4: Added counter-cyclical logic:
+    - Don't sell in panic (momentum < -0.7 + high vol)
+    - Accumulate on fear (extreme negative momentum + drawdown)
+    - Take profit on greed (extreme positive momentum + rally)
     
     Args:
         regime: BULL | BEAR | RANGE | TRANSITION
@@ -296,6 +309,8 @@ def compute_allocation(
         last_action_date: Date of last action
         action_history: List of (action, date) tuples
         today: Current date (defaults to today)
+        vol_z: Volatility z-score (for panic detection)
+        returns_30d: 30-day returns (for drawdown/rally detection)
     
     Returns:
         AllocationPolicy with action and reasoning
@@ -312,11 +327,115 @@ def compute_allocation(
     # Determine stance
     stance = determine_stance(regime, confidence, risk_level)
     
+    # ══════════════════════════════════════════════════════════════
+    # v1.4 COUNTER-CYCLICAL LOGIC (before tail risk)
+    # ══════════════════════════════════════════════════════════════
+    
+    # Detect panic conditions (proxy for RSI < 25)
+    is_panic = momentum < -0.70 and vol_z > 1.5
+    is_extreme_panic = momentum < -0.80 and vol_z > 2.0
+    is_deep_drawdown = returns_30d < -0.20
+    
+    # Detect euphoria conditions (proxy for RSI > 75)
+    is_euphoria = momentum > 0.70 and confidence > 0.60
+    is_extreme_euphoria = momentum > 0.80 and confidence > 0.70
+    is_big_rally = returns_30d > 0.30
+    
+    # COUNTER-CYCLICAL RULE 1: Don't sell in panic
+    # If we're in panic, block SELL/STRONG_SELL (will be applied later)
+    panic_block_sell = is_panic or is_extreme_panic
+    
+    # COUNTER-CYCLICAL RULE 2: Accumulate on fear
+    # Extreme panic + deep drawdown = buying opportunity
+    if is_extreme_panic and is_deep_drawdown and asset == "BTC":
+        action = AllocationAction.BUY
+        reasoning.append("COUNTER-CYCLICAL: Panic + deep drawdown = accumulation")
+        reasoning.append(f"Momentum: {momentum:.2f}, Vol_z: {vol_z:.2f}, Returns_30d: {returns_30d:.1%}")
+        
+        # Still apply cooldown check
+        cooldown_active, days_remaining = is_cooldown_active(
+            last_action, last_action_date, action, today
+        )
+        if cooldown_active:
+            action = AllocationAction.HOLD
+            reasoning.append(f"Cooldown active: {days_remaining}d remaining")
+            blocked_by = "COOLDOWN"
+        
+        return AllocationPolicy(
+            asset=asset,
+            action=action,
+            size_pct=get_size(asset, action),
+            confidence=confidence,
+            stance=stance,
+            blocked_by=blocked_by,
+            reasoning=reasoning
+        )
+    
+    # COUNTER-CYCLICAL RULE 3: Take profit on greed
+    # Extreme euphoria + big rally = reduce exposure
+    if is_extreme_euphoria and is_big_rally and asset == "BTC":
+        action = AllocationAction.SELL
+        reasoning.append("COUNTER-CYCLICAL: Euphoria + big rally = take profit")
+        reasoning.append(f"Momentum: {momentum:.2f}, Confidence: {confidence:.2f}, Returns_30d: {returns_30d:.1%}")
+        
+        # Still apply cooldown check
+        cooldown_active, days_remaining = is_cooldown_active(
+            last_action, last_action_date, action, today
+        )
+        if cooldown_active:
+            action = AllocationAction.HOLD
+            reasoning.append(f"Cooldown active: {days_remaining}d remaining")
+            blocked_by = "COOLDOWN"
+        
+        return AllocationPolicy(
+            asset=asset,
+            action=action,
+            size_pct=get_size(asset, action),
+            confidence=confidence,
+            stance=stance,
+            blocked_by=blocked_by,
+            reasoning=reasoning
+        )
+    
     # ── Step 1: Tail risk override (highest priority) ──
+    # v1.4 MODIFICATION: Don't trigger STRONG_SELL in panic conditions
     if tail_risk and tail_polarity == "downside":
-        action = AllocationAction.STRONG_SELL
-        reasoning.append("TAIL RISK: Emergency exit")
-        reasoning.append(f"Regime: {regime}, bypassing all gates")
+        if panic_block_sell:
+            # In panic: downgrade to HOLD, don't sell the bottom
+            action = AllocationAction.HOLD
+            reasoning.append("TAIL RISK detected, but PANIC conditions active")
+            reasoning.append("COUNTER-CYCLICAL: Not selling into panic")
+            reasoning.append(f"Momentum: {momentum:.2f}, Vol_z: {vol_z:.2f}")
+            
+            return AllocationPolicy(
+                asset=asset,
+                action=action,
+                size_pct=get_size(asset, action),
+                confidence=confidence,
+                stance=stance,
+                blocked_by=None,
+                reasoning=reasoning
+            )
+        else:
+            # Normal tail risk response (not in panic)
+            action = AllocationAction.STRONG_SELL
+            reasoning.append("TAIL RISK: Emergency exit")
+            reasoning.append(f"Regime: {regime}, bypassing all gates")
+            
+            return AllocationPolicy(
+                asset=asset,
+                action=action,
+                size_pct=get_size(asset, action),
+                confidence=confidence,
+                stance=stance,
+                blocked_by=None,
+                reasoning=reasoning
+            )
+    
+    # Upside tail risk: take profit
+    if tail_risk and tail_polarity == "upside":
+        action = AllocationAction.SELL
+        reasoning.append("TAIL RISK (upside): Take profit on euphoria")
         
         return AllocationPolicy(
             asset=asset,
@@ -353,7 +472,12 @@ def compute_allocation(
     
     # ── Step 3: Compute raw action based on regime ──
     if regime == "BULL":
-        if confidence >= CONF_STRONG_BUY and momentum > MOM_STRONG:
+        # v1.4 COUNTER-CYCLICAL: Don't buy in euphoria
+        if is_euphoria or is_extreme_euphoria:
+            raw_action = AllocationAction.HOLD
+            reasoning.append(f"BULL: Euphoria detected (mom={momentum:.2f})")
+            reasoning.append("COUNTER-CYCLICAL: Not buying into overbought")
+        elif confidence >= CONF_STRONG_BUY and momentum > MOM_STRONG:
             raw_action = AllocationAction.STRONG_BUY
             reasoning.append(f"BULL: conf {confidence:.2f} ≥ {CONF_STRONG_BUY}, mom {momentum:.2f} > {MOM_STRONG}")
         elif confidence >= CONF_ACTION and momentum > MOM_WEAK:
@@ -364,10 +488,15 @@ def compute_allocation(
             reasoning.append(f"BULL: conditions not met for action")
     
     elif regime == "BEAR":
-        if confidence >= CONF_STRONG_SELL and momentum < -MOM_STRONG:
+        # v1.4 COUNTER-CYCLICAL: Don't sell in panic conditions
+        if panic_block_sell:
+            raw_action = AllocationAction.HOLD
+            reasoning.append(f"BEAR: Panic detected (mom={momentum:.2f}, vol_z={vol_z:.2f})")
+            reasoning.append("COUNTER-CYCLICAL: Not selling into panic")
+        elif confidence >= CONF_STRONG_SELL and momentum < -MOM_STRONG and not is_panic:
             raw_action = AllocationAction.STRONG_SELL
             reasoning.append(f"BEAR: conf {confidence:.2f} ≥ {CONF_STRONG_SELL}, mom {momentum:.2f} < -{MOM_STRONG}")
-        elif confidence >= CONF_ACTION and momentum < MOM_WEAK:
+        elif confidence >= CONF_ACTION and momentum < MOM_WEAK and not is_panic:
             raw_action = AllocationAction.SELL
             reasoning.append(f"BEAR: conf {confidence:.2f} ≥ {CONF_ACTION}, mom {momentum:.2f} < 0")
         else:
@@ -383,8 +512,16 @@ def compute_allocation(
             reasoning.append("TRANSITION: no action (capital preservation)")
     
     else:  # RANGE
-        raw_action = AllocationAction.HOLD
-        reasoning.append("RANGE: HOLD only")
+        # v1.4 COUNTER-CYCLICAL: Mean reversion in range
+        if is_panic and asset == "BTC":
+            raw_action = AllocationAction.BUY
+            reasoning.append("RANGE + panic: Mean reversion accumulation")
+        elif is_euphoria and asset == "BTC":
+            raw_action = AllocationAction.SELL
+            reasoning.append("RANGE + euphoria: Mean reversion reduction")
+        else:
+            raw_action = AllocationAction.HOLD
+            reasoning.append("RANGE: HOLD only")
     
     # ── Step 4: Regime gate ──
     if not regime_allows(regime, raw_action):
@@ -498,6 +635,10 @@ def compute_btc_eth_allocation(
     vol_z = regime_output.get("metadata", {}).get("vol_z", 0.0)
     structural_break = regime_output.get("normalization", {}).get("break_active", False)
     
+    # v1.4: Extract 30d returns for counter-cyclical logic
+    # This comes from the price data if available
+    returns_30d = regime_output.get("metadata", {}).get("returns_30d", 0.0)
+    
     # Auto-detect tail risk if not provided
     if not tail_risk:
         tail_risk, tail_polarity = detect_tail_risk(vol_z, risk_level, momentum, structural_break)
@@ -515,6 +656,8 @@ def compute_btc_eth_allocation(
         last_action=btc_last_action,
         last_action_date=btc_last_date,
         action_history=btc_history,
+        vol_z=vol_z,
+        returns_30d=returns_30d,
     )
     
     # Compute ETH with BTC as ceiling
@@ -530,6 +673,8 @@ def compute_btc_eth_allocation(
         last_action=eth_last_action,
         last_action_date=eth_last_date,
         action_history=eth_history,
+        vol_z=vol_z,
+        returns_30d=returns_30d,
     )
     
     return {

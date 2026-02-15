@@ -225,7 +225,7 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     # FOOTER
     # ══════════════════════════════════════════════════════
     lines.append("")
-    lines.append("v3.4 · LP v2.0.1 · AA v1.3.1")
+    lines.append("v3.4 · LP v2.0.1 · AA v1.4")
     
     return "\n".join(lines)
 

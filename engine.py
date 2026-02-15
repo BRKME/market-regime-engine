@@ -819,6 +819,8 @@ class RegimeEngine:
                 "data_completeness": round(data_completeness, 2),
                 "timestamp": datetime.utcnow().isoformat(),
                 "btc_price": float(close[-1]) if len(close) > 0 else None,
+                # v1.4: 30d returns for counter-cyclical logic
+                "returns_30d": round((close[-1] / close[-30] - 1), 4) if len(close) >= 30 else 0.0,
             },
         }
 
