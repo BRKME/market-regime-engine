@@ -7,8 +7,8 @@ Probabilistic crypto market regime detection with LP intelligence and asset allo
 | Component | Version | Status |
 |-----------|---------|--------|
 | Market Regime Engine | v3.4 | Production |
-| LP Intelligence | v2.0.1 | Production |
-| Asset Allocation | v1.4 | Production |
+| LP Intelligence | v2.0.2 | Production |
+| Asset Allocation | v1.4.1 | Production |
 
 ## Quick Start
 
@@ -32,8 +32,10 @@ python backtest.py
 
 - **[MARKET_REGIME_ENGINE_v3.4.md](docs/MARKET_REGIME_ENGINE_v3.4.md)** — Regime detection (latest)
 - **[MARKET_REGIME_ENGINE_v3.3.md](docs/MARKET_REGIME_ENGINE_v3.3.md)** — Full specification
-- **[LP_INTELLIGENCE_SYSTEM_v2.0.1.md](docs/LP_INTELLIGENCE_SYSTEM_v2.0.1.md)** — LP policy
-- **[ASSET_ALLOCATION_POLICY_v1_4.md](docs/ASSET_ALLOCATION_POLICY_v1_4.md)** — Asset allocation with counter-cyclical logic
+- **[LP_INTELLIGENCE_SYSTEM_v2.0.2.md](docs/LP_INTELLIGENCE_SYSTEM_v2.0.2.md)** — LP policy (latest)
+- **[LP_INTELLIGENCE_SYSTEM_v2.0.1.md](docs/LP_INTELLIGENCE_SYSTEM_v2.0.1.md)** — LP policy (full spec)
+- **[ASSET_ALLOCATION_POLICY_v1.4.1.md](docs/ASSET_ALLOCATION_POLICY_v1.4.1.md)** — Asset allocation (latest)
+- **[ASSET_ALLOCATION_POLICY_v1_4.md](docs/ASSET_ALLOCATION_POLICY_v1_4.md)** — Asset allocation (full spec)
 
 ## Architecture
 
