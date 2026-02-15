@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-02-15T18:10:38.145892",
+  "results": [
+    {
+      "name": "Full System (AA+LP)",
+      "return_pct": 14.04,
+      "max_dd": 24.99,
+      "sharpe": 0.51,
+      "lp_fees": 588.51,
+      "lp_il": 4000.23,
+      "aa_trades": 53,
+      "panic_protects": 18
+    },
+    {
+      "name": "AA Only (no LP)",
+      "return_pct": 26.71,
+      "max_dd": 25.02,
+      "sharpe": 0.69,
+      "lp_fees": 0,
+      "lp_il": 0,
+      "aa_trades": 53,
+      "panic_protects": 18
+    },
+    {
+      "name": "LP Only (no AA)",
+      "return_pct": 6.97,
+      "max_dd": 40.74,
+      "sharpe": 0.29,
+      "lp_fees": 1471.27,
+      "lp_il": 10000.58,
+      "aa_trades": 0,
+      "panic_protects": 0
+    },
+    {
+      "name": "Buy & Hold",
+      "return_pct": 8.21,
+      "max_dd": 65.02,
+      "sharpe": 0.46,
+      "lp_fees": 0,
+      "lp_il": 0,
+      "aa_trades": 0,
+      "panic_protects": 0
+    }
+  ]
+}
