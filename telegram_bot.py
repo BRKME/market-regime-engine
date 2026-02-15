@@ -78,7 +78,8 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     # ══════════════════════════════════════════════════════
     # REGIME + PROBABILITIES
     # ══════════════════════════════════════════════════════
-    lines.append(f"{risk_emoji} REGIME: {regime}")
+    regime_emoji = {"BULL": "🟢", "BEAR": "🔴", "RANGE": "🟡", "TRANSITION": "⚪"}.get(regime, "⚪")
+    lines.append(f"{regime_emoji} {regime}")
     
     # Phase
     if days <= 1:
@@ -224,7 +225,7 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     # FOOTER
     # ══════════════════════════════════════════════════════
     lines.append("")
-    lines.append("v3.3 · LP v2.0.1 · AA v1.3.1")
+    lines.append("v3.4 · LP v2.0.1 · AA v1.3.1")
     
     return "\n".join(lines)
 

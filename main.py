@@ -52,7 +52,7 @@ def main():
 
     # ── 1. Fetch data ─────────────────────────────────────
     logger.info("=" * 50)
-    logger.info("MARKET REGIME ENGINE v3.3")
+    logger.info("MARKET REGIME ENGINE v3.4")
     logger.info("+ LP INTELLIGENCE v2.0.1")
     logger.info("+ ASSET ALLOCATION v1.3.1")
     logger.info("=" * 50)
