@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     """
     Action-first format.
-    Decision in 5 seconds.
+    Показатели: English
+    Комментарии: Русский
     """
     meta = output.get("metadata", {})
     risk = output.get("risk", {})
@@ -36,8 +37,9 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     days = meta.get("days_in_regime", 0)
     vol_z = meta.get("vol_z", 0)
     struct_break = norm.get("break_active", False)
+    mom = buckets.get("Momentum", 0)
     
-    # Determine action state
+    # Tail risk
     tail_active = False
     tail_polarity = None
     if allocation:
@@ -61,25 +63,22 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     lines = []
     
     # ══════════════════════════════════════════════════════
-    # HEADER: ACTION REQUIRED or STATUS
+    # HEADER
     # ══════════════════════════════════════════════════════
-    lines.append("━" * 36)
-    
     if tail_active:
-        lines.append(f"🚨 ACTION REQUIRED · {risk_state}")
+        lines.append(f"🚨 ALERT: TAIL RISK · {risk_state}")
     elif risk_level < -0.3:
-        lines.append(f"⚠️ CAUTION · {risk_state}")
+        lines.append(f"⚠️ RISK-OFF MODE")
     else:
-        lines.append(f"📊 STATUS · {risk_state}")
+        lines.append(f"📊 MONITORING · {risk_state}")
     
-    lines.append("━" * 36)
     lines.append(f"BTC ${btc_price:,.0f}")
     lines.append("")
     
     # ══════════════════════════════════════════════════════
-    # MARKET STATE (compact)
+    # REGIME + PROBABILITIES
     # ══════════════════════════════════════════════════════
-    lines.append(f"{risk_emoji} MARKET: {regime}")
+    lines.append(f"{risk_emoji} REGIME: {regime}")
     
     # Phase
     if days <= 1:
@@ -90,33 +89,37 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         phase = f"{days}d mature"
     
     conf_pct = int(conf_adj * 100)
-    
-    # Confidence interpretation
-    if conf_adj < 0.25:
-        conf_label = "LOW"
-    elif conf_adj < 0.50:
-        conf_label = "MEDIUM"
-    else:
-        conf_label = "HIGH"
-    
-    lines.append(f"   {phase} · confidence {conf_label} ({conf_pct}%)")
+    lines.append(f"   Phase: {phase} · Confidence: {conf_pct}%")
     
     # Tail risk indicator
     if tail_active:
         if tail_polarity == "downside":
-            lines.append(f"   Tail risk: HIGH ↓")
+            lines.append(f"   Tail risk: ACTIVE ↓")
         else:
-            lines.append(f"   Tail risk: HIGH ↑")
+            lines.append(f"   Tail risk: ACTIVE ↑")
     
-    # One-line summary
-    if regime == "BEAR":
-        lines.append(f"→ Рынок опасен. Защита капитала.")
-    elif regime == "BULL":
-        lines.append(f"→ Рынок растёт. Можно рисковать.")
-    elif regime == "TRANSITION":
-        lines.append(f"→ Неопределённость. Ждём ясности.")
-    else:
-        lines.append(f"→ Боковик. Нет направления.")
+    # Probabilities with visual bars
+    lines.append("")
+    lines.append("Probabilities:")
+    
+    prob_bull = probs.get("BULL", 0)
+    prob_bear = probs.get("BEAR", 0)
+    prob_range = probs.get("RANGE", 0)
+    prob_trans = probs.get("TRANSITION", 0)
+    
+    def make_bar(value, width=12):
+        filled = int(value * width)
+        return "█" * filled + "░" * (width - filled)
+    
+    lines.append(f"   BULL       {make_bar(prob_bull)} {prob_bull:.2f}")
+    lines.append(f"   BEAR       {make_bar(prob_bear)} {prob_bear:.2f}")
+    lines.append(f"   RANGE      {make_bar(prob_range)} {prob_range:.2f}")
+    lines.append(f"   TRANSITION {make_bar(prob_trans)} {prob_trans:.2f}")
+    
+    # Rich logic comment (Russian)
+    lines.append("")
+    comment = _get_regime_comment(regime, days, tail_active, conf_adj, mom, risk_level)
+    lines.append(f"→ {comment}")
     
     # ══════════════════════════════════════════════════════
     # DIRECTIONAL POLICY
@@ -131,52 +134,26 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         eth_size = eth.get("size_pct", 0)
         
         lines.append("")
-        lines.append("━" * 36)
         lines.append("📉 DIRECTIONAL")
-        lines.append("━" * 36)
         
         # Actions
         btc_str = f"{btc_size:+.0%}" if btc_size != 0 else ""
         eth_str = f"{eth_size:+.0%}" if eth_size != 0 else ""
         
-        lines.append(f"BTC: {btc_action} {btc_str}")
-        lines.append(f"ETH: {eth_action} {eth_str}")
+        lines.append(f"   BTC: {btc_action} {btc_str}")
+        lines.append(f"   ETH: {eth_action} {eth_str}")
         
-        # Reasons (compact, grouped)
-        primary_reasons = []
-        secondary_reasons = []
-        
-        mom = buckets.get("Momentum", 0)
-        stab = buckets.get("Stability", 0)
-        
-        # Primary reasons
-        if mom < -0.5:
-            primary_reasons.append("downtrend")
-        elif mom > 0.5:
-            primary_reasons.append("uptrend")
-        
-        if tail_active:
-            primary_reasons.append("tail-risk")
-        
-        # Secondary reasons (in parentheses)
-        if conf_adj < 0.30:
-            secondary_reasons.append("low confidence")
-        
+        # Reason (compact)
         if btc.get("blocked_by"):
-            secondary_reasons.append(f"blocked: {btc['blocked_by'].lower()}")
+            lines.append(f"   Blocked: {btc['blocked_by'].lower()}")
         
-        if primary_reasons or secondary_reasons:
-            reason_str = " + ".join(primary_reasons) if primary_reasons else ""
-            if secondary_reasons:
-                sec_str = ", ".join(secondary_reasons)
-                if reason_str:
-                    reason_str += f" ({sec_str})"
-                else:
-                    reason_str = sec_str
-            lines.append(f"   → {reason_str}")
+        # Directional comment (Russian)
+        dir_comment = _get_directional_comment(btc_action, eth_action, regime, tail_active, conf_adj, mom)
+        if dir_comment:
+            lines.append(f"   → {dir_comment}")
     
     # ══════════════════════════════════════════════════════
-    # LP POLICY (separate)
+    # LP POLICY with QUADRANT MATRIX
     # ══════════════════════════════════════════════════════
     if lp_policy:
         risk_lp = lp_policy.risk_lp
@@ -184,75 +161,168 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         quadrant = lp_policy.risk_quadrant.value
         fv = lp_policy.fee_variance_ratio
         eff = int(lp_policy.effective_exposure * 100)
+        max_exp = int(lp_policy.max_exposure * 100)
         hedge = lp_policy.hedge_recommended
+        range_width = lp_policy.range_width
         
         lines.append("")
-        lines.append("━" * 36)
+        lines.append("💧 LP POLICY")
         
-        # LP header reflects constraint status
-        if eff < int(lp_policy.max_exposure * 100) * 0.5:
-            lines.append("💧 LP POLICY (CONSTRAINED · SECONDARY)")
-        else:
-            lines.append("💧 LP POLICY (SECONDARY)")
-        
-        lines.append("━" * 36)
-        
-        lines.append(f"Quadrant: {quadrant}")
-        lines.append(f"Dir: {risk_dir:+.2f} · LP: {risk_lp:+.2f} · F/V: {fv:.1f}x")
-        
-        # LP Action
+        # Quadrant matrix (compact)
         lines.append("")
-        lines.append(f"Exposure: {eff}%")
+        lines.append("          Dir Risk →")
+        lines.append("      ┌───────┬───────┐")
         
-        range_ru = {
-            "tight": "tight", "standard": "std", "moderate": "med",
-            "wide": "wide", "very_wide": "v.wide"
-        }.get(lp_policy.range_width, lp_policy.range_width)
+        # Mark current quadrant
+        q3_mark = "[Q3]" if quadrant == "Q3" else " Q3 "
+        q1_mark = "[Q1]" if quadrant == "Q1" else " Q1 "
+        q4_mark = "[Q4]" if quadrant == "Q4" else " Q4 "
+        q2_mark = "[Q2]" if quadrant == "Q2" else " Q2 "
         
-        lines.append(f"Range: {range_ru}")
+        lines.append(f"  LP↑ │{q3_mark}  │{q1_mark}  │")
+        lines.append(f"      │ spot  │ ideal │")
+        lines.append("      ├───────┼───────┤")
+        lines.append(f"  LP↓ │{q4_mark}  │{q2_mark}  │")
+        lines.append(f"      │ exit  │ LP    │")
+        lines.append("      └───────┴───────┘")
+        
+        lines.append("")
+        lines.append(f"   Dir: {risk_dir:+.2f} · LP: {risk_lp:+.2f} · F/V: {fv:.1f}x")
+        lines.append(f"   Exposure: {eff}% (max {max_exp}%)")
+        lines.append(f"   Range: {range_width}")
         
         if hedge:
-            lines.append(f"Hedge: REQUIRED")
+            lines.append(f"   Hedge: REQUIRED")
         
-        # Note for Q2
-        if quadrant == "Q2" and risk_lp > 0:
-            lines.append("")
-            lines.append("Note: LP edge exists, but")
-            lines.append("capital at risk is capped.")
+        # LP comment (Russian)
+        lp_comment = _get_lp_comment(quadrant, risk_lp, risk_dir, eff, max_exp)
+        lines.append(f"   → {lp_comment}")
     
     # ══════════════════════════════════════════════════════
-    # FLAGS (if critical) - ordered by severity
+    # FLAGS (if any)
     # ══════════════════════════════════════════════════════
-    critical_flags = []
+    display_flags = []
     
-    # Priority 1: Tail risk
     if tail_active:
-        critical_flags.append("Tail risk active")
+        display_flags.append("Tail risk active")
     
-    # Priority 2: Structure break
     if struct_break:
-        critical_flags.append("Market structure break")
+        display_flags.append("Market structure break")
     
-    # Priority 3: Data issues
-    if any("DATA" in f for f in flags):
-        critical_flags.append("Partial data")
+    # Check for data issues
+    data_quality = meta.get("data_completeness", 1.0)
+    if data_quality < 0.85 or any("DATA" in f for f in flags):
+        display_flags.append("Partial data — проверь источники")
     
-    if critical_flags:
+    if display_flags:
         lines.append("")
-        lines.append("━" * 36)
         lines.append("⚠️ FLAGS")
-        lines.append("━" * 36)
-        for f in critical_flags[:3]:
-            lines.append(f"• {f}")
+        for f in display_flags[:3]:
+            lines.append(f"   • {f}")
     
     # ══════════════════════════════════════════════════════
     # FOOTER
     # ══════════════════════════════════════════════════════
     lines.append("")
-    lines.append("━" * 36)
-    lines.append(f"v3.3 · LP v2.0.1 · AA v1.3.1")
+    lines.append("v3.3 · LP v2.0.1 · AA v1.3.1")
     
     return "\n".join(lines)
+
+
+def _get_regime_comment(regime: str, days: int, tail_active: bool, conf: float, mom: float, risk: float) -> str:
+    """
+    Rich logic комментарий по режиму (Russian).
+    Контекстный — учитывает комбинацию факторов.
+    """
+    if regime == "BEAR":
+        if tail_active and conf < 0.25:
+            return "Паника на рынке. Возможно близко дно — не лучшее время продавать."
+        elif tail_active:
+            return "Сильный стресс. Защита капитала, но осторожно с продажами на лоях."
+        elif days <= 2:
+            return "Начало коррекции. Наблюдаем глубину падения."
+        elif days > 14 and mom > -0.3:
+            return "Затяжной медвежий тренд, но импульс слабеет. Возможен разворот."
+        elif days > 14:
+            return "Затяжной медвежий тренд. Терпение, ждём сигналы разворота."
+        else:
+            return "Рынок слабый. Защита капитала в приоритете."
+    
+    elif regime == "BULL":
+        if tail_active:
+            return "Рост перегрет. Фиксация прибыли разумна."
+        elif days <= 2:
+            return "Возможное начало роста. Подтверждение нужно."
+        elif days > 14 and mom < 0.3:
+            return "Зрелый бычий тренд, импульс слабеет. Осторожность."
+        elif conf >= 0.6:
+            return "Уверенный рост. Можно наращивать позиции."
+        else:
+            return "Рынок растёт. Умеренный риск допустим."
+    
+    elif regime == "TRANSITION":
+        if risk < -0.3:
+            return "Переходный период с негативным уклоном. Лучше подождать."
+        elif risk > 0.3:
+            return "Переходный период с позитивным уклоном. Наблюдаем."
+        else:
+            return "Неопределённость. Ждём ясности перед действиями."
+    
+    else:  # RANGE
+        if conf >= 0.5:
+            return "Боковик. Нет направления, но стабильно."
+        else:
+            return "Боковик с низкой уверенностью. Ждём."
+
+
+def _get_directional_comment(btc_action: str, eth_action: str, regime: str, 
+                              tail_active: bool, conf: float, mom: float) -> str:
+    """
+    Rich logic комментарий по directional (Russian).
+    """
+    if tail_active and "SELL" in btc_action:
+        if conf < 0.25:
+            return "Tail risk, но низкая уверенность — возможно паника. Осторожно."
+        else:
+            return "Tail risk активен — снижаем экспозицию."
+    
+    if btc_action == "HOLD" and eth_action == "HOLD":
+        if conf < 0.4:
+            return "Уверенность слишком низкая для действий."
+        elif regime == "TRANSITION":
+            return "Переходный режим — ждём подтверждения."
+        else:
+            return "Условия не соответствуют критериям входа/выхода."
+    
+    if "BUY" in btc_action:
+        return "Условия для наращивания позиций."
+    
+    if "SELL" in btc_action and not tail_active:
+        return "Условия для сокращения позиций."
+    
+    return ""
+
+
+def _get_lp_comment(quadrant: str, risk_lp: float, risk_dir: float, eff: int, max_exp: int) -> str:
+    """
+    Rich logic комментарий по LP (Russian).
+    """
+    if quadrant == "Q1":
+        return "Идеальные условия для LP. Низкий риск, хорошие комиссии."
+    
+    elif quadrant == "Q2":
+        if eff < max_exp * 0.5:
+            return "LP возможности есть, но капитал ограничен из-за направленного риска."
+        else:
+            return "LP opportunity при повышенном направленном риске."
+    
+    elif quadrant == "Q3":
+        return "Spot лучше LP. Направленный риск низкий, но LP не оптимален."
+    
+    elif quadrant == "Q4":
+        return "Худшие условия. Минимизируй LP экспозицию."
+    
+    return ""
 
 
 # ============================================================
