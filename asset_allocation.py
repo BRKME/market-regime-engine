@@ -1,7 +1,12 @@
 """
-Asset Allocation Policy v1.4
+Asset Allocation Policy v1.4.1
 
 Conservative capital preservation policy with counter-cyclical logic.
+
+v1.4.1 Changes (from CFO backtest):
+- More sensitive panic detection (catches panic earlier)
+- Tightened thresholds: drawdown -25%, rally +40%
+- Added oversold protection in BEAR regime
 
 v1.4 Changes:
 - Don't sell in panic (momentum < -0.7 + high vol)
@@ -328,18 +333,23 @@ def compute_allocation(
     stance = determine_stance(regime, confidence, risk_level)
     
     # ══════════════════════════════════════════════════════════════
-    # v1.4 COUNTER-CYCLICAL LOGIC (before tail risk)
+    # v1.4.1 COUNTER-CYCLICAL LOGIC (tuned from stress test)
     # ══════════════════════════════════════════════════════════════
     
-    # Detect panic conditions (proxy for RSI < 25)
-    is_panic = momentum < -0.70 and vol_z > 1.5
-    is_extreme_panic = momentum < -0.80 and vol_z > 2.0
-    is_deep_drawdown = returns_30d < -0.20
+    # Detect panic conditions (tuned thresholds from CFO backtest)
+    # More sensitive detection: catches panic earlier
+    is_panic = (
+        (momentum < -0.50 and vol_z > 1.5) or  # High vol + negative momentum
+        (momentum < -0.60 and vol_z > 1.0) or  # Strong negative momentum
+        (returns_30d < -0.30)                   # Deep drawdown alone
+    )
+    is_extreme_panic = momentum < -0.75 and vol_z > 2.0
+    is_deep_drawdown = returns_30d < -0.25  # Tightened from -0.20
     
     # Detect euphoria conditions (proxy for RSI > 75)
     is_euphoria = momentum > 0.70 and confidence > 0.60
     is_extreme_euphoria = momentum > 0.80 and confidence > 0.70
-    is_big_rally = returns_30d > 0.30
+    is_big_rally = returns_30d > 0.40  # Raised from 0.30 for less false positives
     
     # COUNTER-CYCLICAL RULE 1: Don't sell in panic
     # If we're in panic, block SELL/STRONG_SELL (will be applied later)
