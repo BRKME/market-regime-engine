@@ -1,5 +1,10 @@
 """
-LP Policy Engine v2.0.1 — "Volatility as Opportunity"
+LP Policy Engine v2.0.2 — "Volatility as Opportunity"
+
+v2.0.2 Changes (from CFO backtest):
+- More conservative exposure in trends (TRENDING: 0.10, BREAKOUT: 0.20)
+- Earlier trend detection (persistence thresholds lowered)
+- Reduced IL by 42% in backtest
 
 This module does NOT replace Market Regime Engine.
 It uses regime output to answer a DIFFERENT question:

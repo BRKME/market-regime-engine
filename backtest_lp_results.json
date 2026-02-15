@@ -1,0 +1,37 @@
+{
+  "generated_at": "2026-02-15T18:06:11.286412",
+  "results": [
+    {
+      "name": "LP v2.0.1 Adaptive",
+      "total_return_pct": -12.75,
+      "fees_earned": 2039.02,
+      "il_suffered": 3032.48,
+      "fee_il_ratio": 0.67,
+      "max_drawdown_pct": 48.8
+    },
+    {
+      "name": "Static 50% LP",
+      "total_return_pct": 4.01,
+      "fees_earned": 1967.05,
+      "il_suffered": 3114.5,
+      "fee_il_ratio": 0.63,
+      "max_drawdown_pct": 43.7
+    },
+    {
+      "name": "Aggressive 80% LP",
+      "total_return_pct": 5.01,
+      "fees_earned": 3147.28,
+      "il_suffered": 4983.21,
+      "fee_il_ratio": 0.63,
+      "max_drawdown_pct": 36.83
+    },
+    {
+      "name": "Spot Only (No LP)",
+      "total_return_pct": 4.89,
+      "fees_earned": 0,
+      "il_suffered": 0,
+      "fee_il_ratio": 0,
+      "max_drawdown_pct": 54.83
+    }
+  ]
+}

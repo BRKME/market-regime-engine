@@ -369,9 +369,10 @@ REGIMES = ["BULL", "BEAR", "RANGE", "TRANSITION"]
 # ============================================================
 
 # ── Trend Persistence Thresholds ──────────────────────────
-LP_PERSISTENCE_CHOPPY = 0.20
-LP_PERSISTENCE_MODERATE = 0.40
-LP_PERSISTENCE_TRENDING = 0.50
+# v2.0.2 — Earlier trend detection
+LP_PERSISTENCE_CHOPPY = 0.25       # Was 0.20
+LP_PERSISTENCE_MODERATE = 0.35    # Was 0.40
+LP_PERSISTENCE_TRENDING = 0.45    # Was 0.50
 
 # ── Uncertainty Inversion ─────────────────────────────────
 LP_UNCERTAINTY_REGIME_MULT = {
@@ -422,14 +423,15 @@ LP_RISK_WEIGHTS = {
 LP_CHURN_SWITCHES = 5  # switches in 30d to trigger CHURN
 
 # ── LP Regime Parameters ──────────────────────────────────
+# v2.0.2 — More conservative in trends, based on CFO backtest
 LP_REGIME_PARAMS = {
-    "HARVEST": {"notional": 0.90, "range": "tight", "rebalance": "aggressive"},
-    "MEAN_REVERT": {"notional": 0.70, "range": "standard", "rebalance": "normal"},
-    "VOLATILE_CHOP": {"notional": 0.80, "range": "moderate", "rebalance": "active"},
-    "TRENDING": {"notional": 0.30, "range": "wide", "rebalance": "minimal"},
-    "BREAKOUT": {"notional": 0.40, "range": "wide", "rebalance": "cautious"},
-    "CHURN": {"notional": 0.10, "range": "very_wide", "rebalance": "disabled"},
-    "GAP_RISK": {"notional": 0.50, "range": "wide", "rebalance": "cautious"},
+    "HARVEST": {"notional": 0.80, "range": "tight", "rebalance": "aggressive"},      # Reduced from 0.90
+    "MEAN_REVERT": {"notional": 0.60, "range": "standard", "rebalance": "normal"},   # Reduced from 0.70
+    "VOLATILE_CHOP": {"notional": 0.50, "range": "moderate", "rebalance": "active"}, # Reduced from 0.80
+    "TRENDING": {"notional": 0.10, "range": "wide", "rebalance": "minimal"},         # Reduced from 0.30
+    "BREAKOUT": {"notional": 0.20, "range": "wide", "rebalance": "cautious"},        # Reduced from 0.40
+    "CHURN": {"notional": 0.05, "range": "very_wide", "rebalance": "disabled"},      # Reduced from 0.10
+    "GAP_RISK": {"notional": 0.25, "range": "wide", "rebalance": "cautious"},        # Reduced from 0.50
     "AVOID": {"notional": 0.00, "range": "n/a", "rebalance": "disabled"},
 }
 
