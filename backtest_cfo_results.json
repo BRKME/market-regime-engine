@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-02-15T14:14:04.873399",
+  "data_period": "2022-06-29 to 2025-03-15",
+  "results": [
+    {
+      "name": "v1.3.1 Conservative",
+      "total_return_pct": 72.72,
+      "cagr_pct": 20.9,
+      "max_drawdown_pct": 27.28,
+      "sharpe_ratio": 0.89,
+      "total_trades": 134,
+      "sells_at_bottom_pct": 34.4
+    },
+    {
+      "name": "v1.4 Counter-cyclical",
+      "total_return_pct": 14.75,
+      "cagr_pct": 4.89,
+      "max_drawdown_pct": 29.68,
+      "sharpe_ratio": 0.51,
+      "total_trades": 533,
+      "sells_at_bottom_pct": 22.6
+    },
+    {
+      "name": "Buy & Hold",
+      "total_return_pct": 345.55,
+      "cagr_pct": 73.38,
+      "max_drawdown_pct": 47.96,
+      "sharpe_ratio": 1.15,
+      "total_trades": 1,
+      "sells_at_bottom_pct": 0
+    }
+  ]
+}
