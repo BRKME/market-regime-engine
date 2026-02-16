@@ -169,23 +169,33 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         lines.append("")
         lines.append("💧 LP POLICY")
         
-        # Quadrant matrix (compact)
+        # Quadrant status line with emoji
+        quadrant_info = {
+            "Q1": ("🟢", "Q1 — Идеально для LP"),
+            "Q2": ("🔵", "Q2 — LP возможности"),
+            "Q3": ("🟡", "Q3 — Лучше спот"),
+            "Q4": ("🔴", "Q4 — Выход/минимум"),
+        }
+        q_emoji, q_desc = quadrant_info.get(quadrant, ("⚪", quadrant))
+        lines.append(f"   📍 {q_emoji} {q_desc}")
+        
+        # Quadrant matrix (monospace with <code>)
         lines.append("")
-        lines.append("          Dir Risk →")
-        lines.append("      ┌───────┬───────┐")
+        lines.append("<code>")
+        lines.append("       Dir Risk →")
+        lines.append("     ┌──────┬──────┐")
         
-        # Mark current quadrant
-        q3_mark = "[Q3]" if quadrant == "Q3" else " Q3 "
-        q1_mark = "[Q1]" if quadrant == "Q1" else " Q1 "
-        q4_mark = "[Q4]" if quadrant == "Q4" else " Q4 "
-        q2_mark = "[Q2]" if quadrant == "Q2" else " Q2 "
+        # Mark current quadrant with brackets
+        q3 = "[Q3]" if quadrant == "Q3" else " Q3 "
+        q1 = "[Q1]" if quadrant == "Q1" else " Q1 "
+        q4 = "[Q4]" if quadrant == "Q4" else " Q4 "
+        q2 = "[Q2]" if quadrant == "Q2" else " Q2 "
         
-        lines.append(f"  LP↑ │{q3_mark}  │{q1_mark}  │")
-        lines.append(f"      │ spot  │ ideal │")
-        lines.append("      ├───────┼───────┤")
-        lines.append(f"  LP↓ │{q4_mark}  │{q2_mark}  │")
-        lines.append(f"      │ exit  │ LP    │")
-        lines.append("      └───────┴───────┘")
+        lines.append(f" LP↑ │ {q3} │ {q1} │")
+        lines.append(f"     ├──────┼──────┤")
+        lines.append(f" LP↓ │ {q4} │ {q2} │")
+        lines.append("     └──────┴──────┘")
+        lines.append("</code>")
         
         lines.append("")
         lines.append(f"   Dir: {risk_dir:+.2f} · LP: {risk_lp:+.2f} · F/V: {fv:.1f}x")
