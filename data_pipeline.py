@@ -214,6 +214,144 @@ def fetch_binance_open_interest(symbol: str = "BTCUSDT") -> Optional[float]:
 
 
 # ============================================================
+# FALLBACK: OKX — FUNDING RATE + OI
+# ============================================================
+
+def fetch_okx_funding_rate() -> pd.DataFrame:
+    """Fetch funding rate from OKX. Fallback for Binance."""
+    url = "https://www.okx.com/api/v5/public/funding-rate-history"
+    params = {"instId": "BTC-USDT-SWAP", "limit": "100"}
+    
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+        
+        if not data:
+            return pd.DataFrame(columns=["date", "fundingRate"])
+        
+        df = pd.DataFrame(data)
+        df["date"] = pd.to_datetime(df["fundingTime"].astype(int), unit="ms").dt.date
+        df["fundingRate"] = df["fundingRate"].astype(float)
+        return df.groupby("date")["fundingRate"].mean().reset_index()
+    except Exception as e:
+        logger.info(f"  ○ OKX funding rate unavailable: {type(e).__name__}")
+        return pd.DataFrame(columns=["date", "fundingRate"])
+
+
+def fetch_okx_open_interest() -> Optional[float]:
+    """Fetch open interest from OKX. Fallback for Binance."""
+    url = "https://www.okx.com/api/v5/public/open-interest"
+    params = {"instType": "SWAP", "instId": "BTC-USDT-SWAP"}
+    
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+        
+        if data:
+            return float(data[0]["oi"])
+        return None
+    except Exception as e:
+        logger.info(f"  ○ OKX OI unavailable: {type(e).__name__}")
+        return None
+
+
+# ============================================================
+# FALLBACK: BYBIT — FUNDING RATE + OI
+# ============================================================
+
+def fetch_bybit_funding_rate() -> pd.DataFrame:
+    """Fetch funding rate from Bybit. Fallback for Binance/OKX."""
+    url = "https://api.bybit.com/v5/market/funding/history"
+    params = {"category": "linear", "symbol": "BTCUSDT", "limit": "100"}
+    
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json().get("result", {}).get("list", [])
+        
+        if not data:
+            return pd.DataFrame(columns=["date", "fundingRate"])
+        
+        df = pd.DataFrame(data)
+        df["date"] = pd.to_datetime(df["fundingRateTimestamp"].astype(int), unit="ms").dt.date
+        df["fundingRate"] = df["fundingRate"].astype(float)
+        return df.groupby("date")["fundingRate"].mean().reset_index()
+    except Exception as e:
+        logger.info(f"  ○ Bybit funding rate unavailable: {type(e).__name__}")
+        return pd.DataFrame(columns=["date", "fundingRate"])
+
+
+def fetch_bybit_open_interest() -> Optional[float]:
+    """Fetch open interest from Bybit. Fallback for Binance/OKX."""
+    url = "https://api.bybit.com/v5/market/open-interest"
+    params = {"category": "linear", "symbol": "BTCUSDT", "intervalTime": "5min", "limit": "1"}
+    
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json().get("result", {}).get("list", [])
+        
+        if data:
+            return float(data[0]["openInterest"])
+        return None
+    except Exception as e:
+        logger.info(f"  ○ Bybit OI unavailable: {type(e).__name__}")
+        return None
+
+
+# ============================================================
+# AGGREGATED FETCH WITH FALLBACKS
+# ============================================================
+
+def fetch_funding_rate_with_fallback() -> pd.DataFrame:
+    """Try Binance → OKX → Bybit for funding rate."""
+    # Try Binance first
+    df = fetch_binance_funding_rate()
+    if not df.empty:
+        logger.info("  ✓ Funding rate: Binance")
+        return df
+    
+    # Try OKX
+    df = fetch_okx_funding_rate()
+    if not df.empty:
+        logger.info("  ✓ Funding rate: OKX (fallback)")
+        return df
+    
+    # Try Bybit
+    df = fetch_bybit_funding_rate()
+    if not df.empty:
+        logger.info("  ✓ Funding rate: Bybit (fallback)")
+        return df
+    
+    return pd.DataFrame(columns=["date", "fundingRate"])
+
+
+def fetch_open_interest_with_fallback() -> Optional[float]:
+    """Try Binance → OKX → Bybit for open interest."""
+    # Try Binance first
+    oi = fetch_binance_open_interest()
+    if oi is not None:
+        logger.info(f"  ✓ OI: Binance")
+        return oi
+    
+    # Try OKX
+    oi = fetch_okx_open_interest()
+    if oi is not None:
+        logger.info(f"  ✓ OI: OKX (fallback)")
+        return oi
+    
+    # Try Bybit
+    oi = fetch_bybit_open_interest()
+    if oi is not None:
+        logger.info(f"  ✓ OI: Bybit (fallback)")
+        return oi
+    
+    return None
+
+
+# ============================================================
 # FEAR & GREED (no auth)
 # ============================================================
 
@@ -363,21 +501,21 @@ def fetch_all_data() -> dict:
         logger.error("  ✗ BTC price: ALL SOURCES FAILED")
         failed_sources.append("BTC Price")
 
-    # ── 2. Funding rate (Binance, optional) ─────────────────
-    logger.info("  [2/8] Funding rate (Binance)...")
-    result["funding"] = fetch_binance_funding_rate()
+    # ── 2. Funding rate (with fallback: Binance → OKX → Bybit) ─
+    logger.info("  [2/8] Funding rate...")
+    result["funding"] = fetch_funding_rate_with_fallback()
     if not result["funding"].empty:
         sources_ok += 1
-        logger.info(f"  ✓ Funding rate: {len(result['funding'])} days")
+        logger.info(f"       {len(result['funding'])} days")
     else:
         failed_sources.append("Funding")
 
-    # ── 3. Open interest (Binance, optional) ────────────────
-    logger.info("  [3/8] Open interest (Binance)...")
-    result["open_interest"] = fetch_binance_open_interest()
+    # ── 3. Open interest (with fallback: Binance → OKX → Bybit) ─
+    logger.info("  [3/8] Open interest...")
+    result["open_interest"] = fetch_open_interest_with_fallback()
     if result["open_interest"] is not None:
         sources_ok += 1
-        logger.info(f"  ✓ Open interest: {result['open_interest']:,.0f}")
+        logger.info(f"       OI: {result['open_interest']:,.0f}")
     else:
         failed_sources.append("OI")
 
