@@ -126,7 +126,7 @@ def fetch_btc_price_coingecko(days: int = 365) -> pd.DataFrame:
 
 
 def fetch_coingecko_global() -> dict:
-    """Fetch global market data: total market cap, BTC dominance."""
+    """Fetch global market data: total market cap, BTC dominance, ETH price."""
     url = f"{CG_BASE}/global"
 
     try:
@@ -134,13 +134,25 @@ def fetch_coingecko_global() -> dict:
         resp.raise_for_status()
         data = resp.json()["data"]
 
-        return {
+        result = {
             "total_market_cap_usd": data["total_market_cap"].get("usd", 0),
             "btc_dominance": data.get("market_cap_percentage", {}).get("btc", 0),
+            "eth_price": None,
         }
+        
+        # Fetch ETH price separately
+        try:
+            eth_url = f"{CG_BASE}/simple/price?ids=ethereum&vs_currencies=usd"
+            eth_resp = requests.get(eth_url, timeout=10)
+            eth_resp.raise_for_status()
+            result["eth_price"] = eth_resp.json().get("ethereum", {}).get("usd", 0)
+        except:
+            pass
+        
+        return result
     except Exception as e:
         logger.warning(f"CoinGecko global failed: {e}")
-        return {"total_market_cap_usd": None, "btc_dominance": None}
+        return {"total_market_cap_usd": None, "btc_dominance": None, "eth_price": None}
 
 
 def fetch_coingecko_market_cap_history(days: int = 120) -> pd.DataFrame:

@@ -67,12 +67,19 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     # ══════════════════════════════════════════════════════
     if tail_active:
         lines.append(f"🚨 ALERT: TAIL RISK · {risk_state}")
+        lines.append(f"   → Экстремальный риск, защита капитала")
     elif risk_level < -0.3:
         lines.append(f"⚠️ RISK-OFF MODE")
+        lines.append(f"   → Негативный сигнал, снижение риска")
     else:
         lines.append(f"📊 MONITORING · {risk_state}")
     
-    lines.append(f"BTC ${btc_price:,.0f}")
+    # Prices (ETH from CoinGecko global if available)
+    eth_price = meta.get("eth_price", 0)
+    if eth_price > 0:
+        lines.append(f"BTC ${btc_price:,.0f} · ETH ${eth_price:,.0f}")
+    else:
+        lines.append(f"BTC ${btc_price:,.0f}")
     lines.append("")
     
     # ══════════════════════════════════════════════════════
@@ -101,7 +108,7 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     
     # Probabilities with visual bars
     lines.append("")
-    lines.append("Probabilities:")
+    lines.append("Probabilities (режим рынка):")
     
     prob_bull = probs.get("BULL", 0)
     prob_bear = probs.get("BEAR", 0)
@@ -112,10 +119,10 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         filled = int(value * width)
         return "█" * filled + "░" * (width - filled)
     
-    lines.append(f"   BULL       {make_bar(prob_bull)} {prob_bull:.2f}")
-    lines.append(f"   BEAR       {make_bar(prob_bear)} {prob_bear:.2f}")
-    lines.append(f"   RANGE      {make_bar(prob_range)} {prob_range:.2f}")
-    lines.append(f"   TRANSITION {make_bar(prob_trans)} {prob_trans:.2f}")
+    lines.append(f"   BULL       {make_bar(prob_bull)} {int(prob_bull*100)}%")
+    lines.append(f"   BEAR       {make_bar(prob_bear)} {int(prob_bear*100)}%")
+    lines.append(f"   RANGE      {make_bar(prob_range)} {int(prob_range*100)}%")
+    lines.append(f"   TRANSITION {make_bar(prob_trans)} {int(prob_trans*100)}%")
     
     # Rich logic comment (Russian)
     lines.append("")
@@ -135,7 +142,7 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         eth_size = eth.get("size_pct", 0)
         
         lines.append("")
-        lines.append("📉 DIRECTIONAL")
+        lines.append("📉 DIRECTIONAL (спот позиции):")
         
         # Actions
         btc_str = f"{btc_size:+.0%}" if btc_size != 0 else ""
@@ -161,13 +168,12 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         risk_dir = lp_policy.risk_directional
         quadrant = lp_policy.risk_quadrant.value
         fv = lp_policy.fee_variance_ratio
-        eff = int(lp_policy.effective_exposure * 100)
         max_exp = int(lp_policy.max_exposure * 100)
         hedge = lp_policy.hedge_recommended
         range_width = lp_policy.range_width
         
         lines.append("")
-        lines.append("💧 LP POLICY")
+        lines.append("💧 LP POLICY:")
         
         # Quadrant status line with emoji
         quadrant_info = {
@@ -179,34 +185,29 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         q_emoji, q_desc = quadrant_info.get(quadrant, ("⚪", quadrant))
         lines.append(f"   📍 {q_emoji} {q_desc}")
         
-        # Quadrant matrix (monospace with <code>)
+        # Quadrant matrix (pre-formatted, no code tags)
         lines.append("")
-        lines.append("<code>")
-        lines.append("       Dir Risk →")
-        lines.append("     ┌──────┬──────┐")
-        
-        # Mark current quadrant with brackets
         q3 = "[Q3]" if quadrant == "Q3" else " Q3 "
         q1 = "[Q1]" if quadrant == "Q1" else " Q1 "
         q4 = "[Q4]" if quadrant == "Q4" else " Q4 "
         q2 = "[Q2]" if quadrant == "Q2" else " Q2 "
         
-        lines.append(f" LP↑ │ {q3} │ {q1} │")
-        lines.append(f"     ├──────┼──────┤")
-        lines.append(f" LP↓ │ {q4} │ {q2} │")
-        lines.append("     └──────┴──────┘")
-        lines.append("</code>")
+        lines.append(f"   ┌──────┬──────┐")
+        lines.append(f"   │ {q3} │ {q1} │ LP↑")
+        lines.append(f"   ├──────┼──────┤")
+        lines.append(f"   │ {q4} │ {q2} │ LP↓")
+        lines.append(f"   └──────┴──────┘")
         
         lines.append("")
-        lines.append(f"   Dir: {risk_dir:+.2f} · LP: {risk_lp:+.2f} · F/V: {fv:.1f}x")
-        lines.append(f"   Exposure: {eff}% (max {max_exp}%)")
+        lines.append(f"   Dir: {risk_dir:+.2f} (напр.риск) · LP: {risk_lp:+.2f} (LP риск) · F/V: {fv:.1f}x (fee/vol)")
+        lines.append(f"   Exposure: {max_exp}%")
         lines.append(f"   Range: {range_width}")
         
         if hedge:
             lines.append(f"   Hedge: REQUIRED")
         
         # LP comment (Russian)
-        lp_comment = _get_lp_comment(quadrant, risk_lp, risk_dir, eff, max_exp)
+        lp_comment = _get_lp_comment(quadrant, risk_lp, risk_dir, max_exp, max_exp)
         lines.append(f"   → {lp_comment}")
     
     # ══════════════════════════════════════════════════════
@@ -215,10 +216,10 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     display_flags = []
     
     if tail_active:
-        display_flags.append("Tail risk active")
+        display_flags.append("Tail risk (экстремальная волатильность)")
     
     if struct_break:
-        display_flags.append("Market structure break")
+        display_flags.append("Structure break (слом структуры)")
     
     # Check for data issues - show specific failed sources
     data_quality = meta.get("data_completeness", 1.0)
@@ -303,7 +304,7 @@ def _get_directional_comment(btc_action: str, eth_action: str, regime: str,
     
     if btc_action == "HOLD" and eth_action == "HOLD":
         if conf < 0.4:
-            return "Уверенность слишком низкая для действий."
+            return "Сигнал ниже порога — без действий"
         elif regime == "TRANSITION":
             return "Переходный режим — ждём подтверждения."
         else:
@@ -326,10 +327,7 @@ def _get_lp_comment(quadrant: str, risk_lp: float, risk_dir: float, eff: int, ma
         return "Идеальные условия для LP. Низкий риск, хорошие комиссии."
     
     elif quadrant == "Q2":
-        if eff < max_exp * 0.5:
-            return "LP возможности есть, но капитал ограничен из-за направленного риска."
-        else:
-            return "LP opportunity при повышенном направленном риске."
+        return "LP профитабелен, но высокий направленный риск — нужен хедж"
     
     elif quadrant == "Q3":
         return "Spot лучше LP. Направленный риск низкий, но LP не оптимален."

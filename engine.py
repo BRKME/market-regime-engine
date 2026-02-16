@@ -606,6 +606,7 @@ class RegimeEngine:
 
         glob = raw_data.get("global", {})
         btc_dom_current = glob.get("btc_dominance", None)
+        eth_price = glob.get("eth_price", None)
 
         # BTC dominance history: approximate from state or single value
         btc_dom_history = np.array(self.state.get("btc_dom_history", []))
@@ -821,6 +822,7 @@ class RegimeEngine:
                 "failed_sources": failed_sources,
                 "timestamp": datetime.utcnow().isoformat(),
                 "btc_price": float(close[-1]) if len(close) > 0 else None,
+                "eth_price": float(eth_price) if eth_price else None,
                 # v1.4: 30d returns for counter-cyclical logic
                 "returns_30d": round((close[-1] / close[-30] - 1), 4) if len(close) >= 30 else 0.0,
             },
