@@ -321,11 +321,17 @@ def fetch_all_data() -> dict:
         "fear_greed": None,
         "yahoo": None,
         "fred": None,
-        "quality": {"completeness": 1.0, "sources_available": 0, "sources_total": 8},
+        "quality": {
+            "completeness": 1.0, 
+            "sources_available": 0, 
+            "sources_total": 8,
+            "failed_sources": []
+        },
         "fetch_time": datetime.utcnow().isoformat(),
     }
 
     sources_ok = 0
+    failed_sources = []
 
     # ── 1. BTC Price (Yahoo → CoinGecko fallback) ──────────
     logger.info("  [1/8] BTC price (Yahoo Finance)...")
@@ -343,6 +349,7 @@ def fetch_all_data() -> dict:
                     f"last=${price_df['close'].iloc[-1]:,.0f}")
     else:
         logger.error("  ✗ BTC price: ALL SOURCES FAILED")
+        failed_sources.append("BTC Price")
 
     # ── 2. Funding rate (Binance, optional) ─────────────────
     logger.info("  [2/8] Funding rate (Binance)...")
@@ -350,6 +357,8 @@ def fetch_all_data() -> dict:
     if not result["funding"].empty:
         sources_ok += 1
         logger.info(f"  ✓ Funding rate: {len(result['funding'])} days")
+    else:
+        failed_sources.append("Funding")
 
     # ── 3. Open interest (Binance, optional) ────────────────
     logger.info("  [3/8] Open interest (Binance)...")
@@ -357,6 +366,8 @@ def fetch_all_data() -> dict:
     if result["open_interest"] is not None:
         sources_ok += 1
         logger.info(f"  ✓ Open interest: {result['open_interest']:,.0f}")
+    else:
+        failed_sources.append("OI")
 
     time.sleep(1)
 
@@ -367,6 +378,8 @@ def fetch_all_data() -> dict:
         sources_ok += 1
         logger.info(f"  ✓ TMC=${result['global']['total_market_cap_usd']/1e12:.2f}T, "
                     f"BTC.D={result['global']['btc_dominance']:.1f}%")
+    else:
+        failed_sources.append("CoinGecko")
 
     time.sleep(2)
 
@@ -376,6 +389,8 @@ def fetch_all_data() -> dict:
     if not result["market_cap_history"].empty:
         sources_ok += 1
         logger.info(f"  ✓ MCap history: {len(result['market_cap_history'])} days")
+    else:
+        failed_sources.append("MCap")
 
     # ── 6. Fear & Greed ─────────────────────────────────────
     logger.info("  [6/8] Fear & Greed...")
@@ -384,6 +399,8 @@ def fetch_all_data() -> dict:
         sources_ok += 1
         fg_now = result["fear_greed"].iloc[0]["fear_greed"]
         logger.info(f"  ✓ Fear & Greed: {len(result['fear_greed'])} days, current={fg_now}")
+    else:
+        failed_sources.append("F&G")
 
     # ── 7. Yahoo macro ──────────────────────────────────────
     logger.info("  [7/8] Yahoo macro (DXY, SPX, Gold)...")
@@ -395,6 +412,8 @@ def fetch_all_data() -> dict:
     if not result["yahoo"].empty:
         sources_ok += 1
         logger.info(f"  ✓ Yahoo macro: {len(result['yahoo'])} days")
+    else:
+        failed_sources.append("Yahoo")
 
     # ── 8. FRED ─────────────────────────────────────────────
     logger.info("  [8/8] FRED (yields, M2)...")
@@ -406,13 +425,18 @@ def fetch_all_data() -> dict:
     if not result["fred"].empty:
         sources_ok += 1
         logger.info(f"  ✓ FRED: {len(result['fred'])} rows")
+    else:
+        failed_sources.append("FRED")
 
     result["quality"]["sources_available"] = sources_ok
     result["quality"]["completeness"] = sources_ok / result["quality"]["sources_total"]
+    result["quality"]["failed_sources"] = failed_sources
 
     logger.info("=" * 50)
     logger.info(f"DATA: {sources_ok}/{result['quality']['sources_total']} sources OK "
                 f"({result['quality']['completeness']:.0%})")
+    if failed_sources:
+        logger.info(f"FAILED: {', '.join(failed_sources)}")
     logger.info("=" * 50)
 
     return result

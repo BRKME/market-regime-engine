@@ -220,15 +220,19 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     if struct_break:
         display_flags.append("Market structure break")
     
-    # Check for data issues
+    # Check for data issues - show specific failed sources
     data_quality = meta.get("data_completeness", 1.0)
-    if data_quality < 0.85 or any("DATA" in f for f in flags):
+    failed_sources = meta.get("failed_sources", [])
+    
+    if failed_sources:
+        display_flags.append(f"Нет данных: {', '.join(failed_sources)}")
+    elif data_quality < 0.85 or any("DATA" in f for f in flags):
         display_flags.append("Partial data — проверь источники")
     
     if display_flags:
         lines.append("")
         lines.append("⚠️ FLAGS")
-        for f in display_flags[:3]:
+        for f in display_flags[:4]:
             lines.append(f"   • {f}")
     
     # ══════════════════════════════════════════════════════

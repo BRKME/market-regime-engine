@@ -593,6 +593,7 @@ class RegimeEngine:
         volume = price_df["quote_volume"].values.astype(float)
 
         data_completeness = raw_data["quality"]["completeness"]
+        failed_sources = raw_data["quality"].get("failed_sources", [])
         if data_completeness < cfg.DATA_QUALITY_MIN:
             flags.append("DATA_QUALITY_DEGRADED")
 
@@ -817,6 +818,7 @@ class RegimeEngine:
                 "smoothing_alpha": alpha,
                 "vol_z": round(vol_z, 4),
                 "data_completeness": round(data_completeness, 2),
+                "failed_sources": failed_sources,
                 "timestamp": datetime.utcnow().isoformat(),
                 "btc_price": float(close[-1]) if len(close) > 0 else None,
                 # v1.4: 30d returns for counter-cyclical logic
