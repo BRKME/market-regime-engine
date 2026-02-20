@@ -208,8 +208,33 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         lines.append(f"   │ {q4} │ {q2} │ LP↓")
         lines.append(f"   └──────┴──────┘")
         
+        # LP risk comment
+        if risk_lp > 0.5:
+            lp_risk_comment = "отлично"
+        elif risk_lp > 0.2:
+            lp_risk_comment = "умеренно"
+        elif risk_lp > -0.2:
+            lp_risk_comment = "нейтрально"
+        elif risk_lp > -0.5:
+            lp_risk_comment = "плохо"
+        else:
+            lp_risk_comment = "очень плохо"
+        
+        # F/V comment
+        if fv > 2.0:
+            fv_comment = "прибылен"
+        elif fv > 1.5:
+            fv_comment = "хорошо"
+        elif fv > 1.0:
+            fv_comment = "на грани"
+        elif fv > 0.8:
+            fv_comment = "слабо"
+        else:
+            fv_comment = "убыточен"
+        
         lines.append("")
-        lines.append(f"   LP risk: {risk_lp:+.2f} · F/V: {fv:.1f}x (fee/vol)")
+        lines.append(f"   LP risk: {risk_lp:+.2f} ({lp_risk_comment})")
+        lines.append(f"   F/V: {fv:.1f}x ({fv_comment})")
         lines.append(f"   Exposure: {max_exp}%")
         lines.append(f"   Range: {range_width}")
         
