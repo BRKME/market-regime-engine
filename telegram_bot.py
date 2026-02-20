@@ -208,7 +208,7 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         lines.append(f"   │ {q4} │ {q2} │ LP↓")
         lines.append(f"   └──────┴──────┘")
         
-        # LP risk comment
+        # LP доходность comment
         if risk_lp > 0.5:
             lp_risk_comment = "отлично"
         elif risk_lp > 0.2:
@@ -220,20 +220,20 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         else:
             lp_risk_comment = "очень плохо"
         
-        # F/V comment
+        # F/V comment (fee vs IL)
         if fv > 2.0:
-            fv_comment = "прибылен"
+            fv_comment = "комиссии >> IL"
         elif fv > 1.5:
-            fv_comment = "хорошо"
+            fv_comment = "комиссии > IL"
         elif fv > 1.0:
-            fv_comment = "на грани"
+            fv_comment = "комиссии ≈ IL"
         elif fv > 0.8:
-            fv_comment = "слабо"
+            fv_comment = "комиссии < IL"
         else:
-            fv_comment = "убыточен"
+            fv_comment = "IL >> комиссии"
         
         lines.append("")
-        lines.append(f"   LP risk: {risk_lp:+.2f} ({lp_risk_comment})")
+        lines.append(f"   LP доходность: {risk_lp:+.2f} ({lp_risk_comment})")
         lines.append(f"   F/V: {fv:.1f}x ({fv_comment})")
         lines.append(f"   Exposure: {max_exp}%")
         lines.append(f"   Range: {range_width}")
