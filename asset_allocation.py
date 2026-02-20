@@ -68,10 +68,15 @@ class AllocationPolicy:
 # ============================================================
 
 # Confidence gates
-CONF_NO_ACTION = getattr(cfg, 'AA_CONF_NO_ACTION', 0.40)
-CONF_ACTION = getattr(cfg, 'AA_CONF_ACTION', 0.50)
-CONF_STRONG_SELL = getattr(cfg, 'AA_CONF_STRONG_SELL', 0.60)
-CONF_STRONG_BUY = getattr(cfg, 'AA_CONF_STRONG_BUY', 0.70)
+# ══════════════════════════════════════════════════════════════
+# v1.6 TREND-FOLLOWING (не торгуем против тренда!)
+# ══════════════════════════════════════════════════════════════
+
+# Confidence thresholds (низкие для входа, высокие для выхода)
+CONF_NO_ACTION = getattr(cfg, 'AA_CONF_NO_ACTION', 0.20)      # Легко входить
+CONF_ACTION = getattr(cfg, 'AA_CONF_ACTION', 0.30)            # Легко входить
+CONF_STRONG_SELL = getattr(cfg, 'AA_CONF_STRONG_SELL', 0.70)  # Сложно выходить!
+CONF_STRONG_BUY = getattr(cfg, 'AA_CONF_STRONG_BUY', 0.40)    # Легко покупать
 
 # Momentum thresholds
 MOM_STRONG = getattr(cfg, 'AA_MOM_STRONG', 0.50)
@@ -82,26 +87,26 @@ RISK_TRANSITION_SELL = getattr(cfg, 'AA_RISK_TRANSITION_SELL', -0.30)
 
 # Position sizes
 SIZES_BTC = {
-    AllocationAction.STRONG_BUY: +0.20,
-    AllocationAction.BUY: +0.10,
+    AllocationAction.STRONG_BUY: +0.40,   # AGGRESSIVE buy
+    AllocationAction.BUY: +0.25,          # Good buy
     AllocationAction.HOLD: 0.00,
-    AllocationAction.SELL: -0.15,
-    AllocationAction.STRONG_SELL: -0.50,
+    AllocationAction.SELL: -0.10,         # Small sell (preserve position)
+    AllocationAction.STRONG_SELL: -0.30,  # Was -0.50 (less aggressive exit)
 }
 
 SIZES_ETH = {
-    AllocationAction.STRONG_BUY: 0.00,  # Not allowed
-    AllocationAction.BUY: +0.05,
+    AllocationAction.STRONG_BUY: +0.20,   # Allow ETH buys
+    AllocationAction.BUY: +0.15,          
     AllocationAction.HOLD: 0.00,
-    AllocationAction.SELL: -0.20,
-    AllocationAction.STRONG_SELL: -0.70,
+    AllocationAction.SELL: -0.15,         
+    AllocationAction.STRONG_SELL: -0.50,  # ETH более рисковый - выходим быстрее
 }
 
-# Anti-churn
-MAX_ACTIONS_30D = getattr(cfg, 'AA_MAX_ACTIONS_30D', 3)
-COOLDOWN_BUY_AFTER_SELL = getattr(cfg, 'AA_COOLDOWN_BUY_AFTER_SELL', 7)
-COOLDOWN_SELL_AFTER_BUY = getattr(cfg, 'AA_COOLDOWN_SELL_AFTER_BUY', 3)
-COOLDOWN_STRONG_AFTER_STRONG = getattr(cfg, 'AA_COOLDOWN_STRONG', 14)
+# Anti-churn (ASYMMETRIC: быстро покупаем, медленно продаём)
+MAX_ACTIONS_30D = getattr(cfg, 'AA_MAX_ACTIONS_30D', 4)
+COOLDOWN_BUY_AFTER_SELL = getattr(cfg, 'AA_COOLDOWN_BUY_AFTER_SELL', 1)   # Быстро откупаем!
+COOLDOWN_SELL_AFTER_BUY = getattr(cfg, 'AA_COOLDOWN_SELL_AFTER_BUY', 7)   # Долго держим!
+COOLDOWN_STRONG_AFTER_STRONG = getattr(cfg, 'AA_COOLDOWN_STRONG', 3)
 
 # Regime actions
 REGIME_ACTIONS = {
@@ -333,18 +338,14 @@ def compute_allocation(
     stance = determine_stance(regime, confidence, risk_level)
     
     # ══════════════════════════════════════════════════════════════
-    # v1.4.1 COUNTER-CYCLICAL LOGIC (tuned from stress test)
+    # v1.6 TREND-FOLLOWING: минимальная блокировка продаж
     # ══════════════════════════════════════════════════════════════
     
-    # Detect panic conditions (tuned thresholds from CFO backtest)
-    # More sensitive detection: catches panic earlier
-    is_panic = (
-        (momentum < -0.50 and vol_z > 1.5) or  # High vol + negative momentum
-        (momentum < -0.60 and vol_z > 1.0) or  # Strong negative momentum
-        (returns_30d < -0.30)                   # Deep drawdown alone
-    )
-    is_extreme_panic = momentum < -0.75 and vol_z > 2.0
-    is_deep_drawdown = returns_30d < -0.25  # Tightened from -0.20
+    # Panic detection - ТОЛЬКО экстремальные случаи
+    # Не блокируем обычные коррекции!
+    is_panic = momentum < -0.85 and vol_z > 2.5  # Очень жёсткий порог
+    is_extreme_panic = momentum < -0.90 and vol_z > 3.0
+    is_deep_drawdown = returns_30d < -0.40  # Только -40%+
     
     # Detect euphoria conditions (proxy for RSI > 75)
     is_euphoria = momentum > 0.70 and confidence > 0.60
@@ -482,56 +483,55 @@ def compute_allocation(
     
     # ── Step 3: Compute raw action based on regime ──
     if regime == "BULL":
-        # v1.4 COUNTER-CYCLICAL: Don't buy in euphoria
-        if is_euphoria or is_extreme_euphoria:
-            raw_action = AllocationAction.HOLD
-            reasoning.append(f"BULL: Euphoria detected (mom={momentum:.2f})")
-            reasoning.append("COUNTER-CYCLICAL: Not buying into overbought")
-        elif confidence >= CONF_STRONG_BUY and momentum > MOM_STRONG:
+        # v1.6 TREND-FOLLOWING: В бычке ПОКУПАЕМ, не боимся euphoria!
+        # Euphoria в бычке = продолжение тренда, не время продавать
+        if confidence >= CONF_STRONG_BUY and momentum > MOM_WEAK:
             raw_action = AllocationAction.STRONG_BUY
-            reasoning.append(f"BULL: conf {confidence:.2f} ≥ {CONF_STRONG_BUY}, mom {momentum:.2f} > {MOM_STRONG}")
-        elif confidence >= CONF_ACTION and momentum > MOM_WEAK:
+            reasoning.append(f"BULL: conf {confidence:.2f} ≥ {CONF_STRONG_BUY}, mom {momentum:.2f}")
+        elif confidence >= CONF_ACTION and momentum > -0.2:  # Покупаем даже при слабом моментуме
             raw_action = AllocationAction.BUY
-            reasoning.append(f"BULL: conf {confidence:.2f} ≥ {CONF_ACTION}, mom {momentum:.2f} > 0")
+            reasoning.append(f"BULL: conf {confidence:.2f} ≥ {CONF_ACTION}")
         else:
             raw_action = AllocationAction.HOLD
-            reasoning.append(f"BULL: conditions not met for action")
+            reasoning.append(f"BULL: HOLD (trend-following)")
     
     elif regime == "BEAR":
-        # v1.4 COUNTER-CYCLICAL: Don't sell in panic conditions
+        # v1.6 TREND-FOLLOWING: Продаём только при СИЛЬНОМ подтверждении
+        # Не продаём на каждой коррекции!
         if panic_block_sell:
             raw_action = AllocationAction.HOLD
-            reasoning.append(f"BEAR: Panic detected (mom={momentum:.2f}, vol_z={vol_z:.2f})")
-            reasoning.append("COUNTER-CYCLICAL: Not selling into panic")
-        elif confidence >= CONF_STRONG_SELL and momentum < -MOM_STRONG and not is_panic:
+            reasoning.append(f"BEAR: Extreme panic (mom={momentum:.2f}, vol_z={vol_z:.2f})")
+            reasoning.append("COUNTER-CYCLICAL: Not selling into capitulation")
+        elif confidence >= CONF_STRONG_SELL and momentum < -MOM_STRONG and returns_30d < -0.15:
+            # Требуем: высокая уверенность + сильный негативный моментум + уже есть просадка
             raw_action = AllocationAction.STRONG_SELL
-            reasoning.append(f"BEAR: conf {confidence:.2f} ≥ {CONF_STRONG_SELL}, mom {momentum:.2f} < -{MOM_STRONG}")
-        elif confidence >= CONF_ACTION and momentum < MOM_WEAK and not is_panic:
+            reasoning.append(f"BEAR confirmed: conf {confidence:.2f}, mom {momentum:.2f}, ret30d {returns_30d:.1%}")
+        elif confidence >= 0.50 and momentum < -0.40 and returns_30d < -0.10:
+            # Обычный SELL только при подтверждённом даунтренде
             raw_action = AllocationAction.SELL
-            reasoning.append(f"BEAR: conf {confidence:.2f} ≥ {CONF_ACTION}, mom {momentum:.2f} < 0")
+            reasoning.append(f"BEAR: conf {confidence:.2f}, mom {momentum:.2f}, ret30d {returns_30d:.1%}")
         else:
             raw_action = AllocationAction.HOLD
-            reasoning.append(f"BEAR: conditions not met for action")
+            reasoning.append(f"BEAR: HOLD (waiting for confirmation)")
     
     elif regime == "TRANSITION":
-        if risk_level < RISK_TRANSITION_SELL and confidence >= CONF_ACTION:
+        # v1.6: TRANSITION = неопределённость, лучше HOLD
+        # Продаём только при очень сильном риске
+        if risk_level < -0.7 and confidence >= 0.50 and momentum < -0.3:
             raw_action = AllocationAction.SELL
-            reasoning.append(f"TRANSITION: risk {risk_level:.2f} < {RISK_TRANSITION_SELL}")
+            reasoning.append(f"TRANSITION: high risk {risk_level:.2f}, selling")
         else:
             raw_action = AllocationAction.HOLD
-            reasoning.append("TRANSITION: no action (capital preservation)")
+            reasoning.append("TRANSITION: HOLD (uncertainty = no action)")
     
     else:  # RANGE
-        # v1.4 COUNTER-CYCLICAL: Mean reversion in range
-        if is_panic and asset == "BTC":
+        # v1.6: В боковике больше HOLD, меньше торговли
+        if is_extreme_panic and asset == "BTC":
             raw_action = AllocationAction.BUY
-            reasoning.append("RANGE + panic: Mean reversion accumulation")
-        elif is_euphoria and asset == "BTC":
-            raw_action = AllocationAction.SELL
-            reasoning.append("RANGE + euphoria: Mean reversion reduction")
+            reasoning.append("RANGE + extreme panic: Accumulation")
         else:
             raw_action = AllocationAction.HOLD
-            reasoning.append("RANGE: HOLD only")
+            reasoning.append("RANGE: HOLD (no trend)")
     
     # ── Step 4: Regime gate ──
     if not regime_allows(regime, raw_action):

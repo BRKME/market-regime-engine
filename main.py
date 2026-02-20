@@ -1,5 +1,5 @@
 """
-Market Regime Engine v3.4 + LP Intelligence v2.0.2 + Asset Allocation v1.4.1
+Market Regime Engine v3.4 + LP Intelligence v2.0.2 + Asset Allocation v1.6.0
 
 Usage:
   python main.py              # Full run: regime → LP → allocation → Telegram
@@ -54,7 +54,7 @@ def main():
     logger.info("=" * 50)
     logger.info("MARKET REGIME ENGINE v3.4")
     logger.info("+ LP INTELLIGENCE v2.0.2")
-    logger.info("+ ASSET ALLOCATION v1.4.1")
+    logger.info("+ ASSET ALLOCATION v1.6.0")
     logger.info("=" * 50)
 
     raw_data = fetch_all_data()
