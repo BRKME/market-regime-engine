@@ -86,7 +86,6 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     # REGIME + PROBABILITIES
     # ══════════════════════════════════════════════════════
     regime_emoji = {"BULL": "🟢", "BEAR": "🔴", "RANGE": "🟡", "TRANSITION": "⚪"}.get(regime, "⚪")
-    lines.append(f"{regime_emoji} {regime}")
     
     # Phase
     if days <= 1:
@@ -97,7 +96,9 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         phase = f"{days}d mature"
     
     conf_pct = int(conf_adj * 100)
-    lines.append(f"   Phase: {phase} · Confidence: {conf_pct}%")
+    
+    # REGIME line with phase and confidence in parentheses
+    lines.append(f"{regime_emoji} {regime} ({phase} · Confidence: {conf_pct}%)")
     
     # Tail risk indicator
     if tail_active:
@@ -105,6 +106,15 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
             lines.append(f"   Tail risk: ACTIVE ↓")
         else:
             lines.append(f"   Tail risk: ACTIVE ↑")
+    
+    # Dir (directional risk) - показатель направленного риска
+    if risk_level < 0:
+        dir_arrow = "↓"
+        dir_comment = "угол падения"
+    else:
+        dir_arrow = "↑"
+        dir_comment = "угол роста"
+    lines.append(f"   Dir: {dir_arrow} {abs(risk_level):.2f} ({dir_comment})")
     
     # Probabilities with visual bars
     lines.append("")
@@ -173,9 +183,8 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         range_width = lp_policy.range_width
         
         lines.append("")
-        lines.append("💧 LP POLICY:")
         
-        # Quadrant status line with emoji
+        # Quadrant emoji as header (цвет шарика = фаза)
         quadrant_info = {
             "Q1": ("🟢", "Q1 — Идеально для LP"),
             "Q2": ("🔵", "Q2 — LP возможности"),
@@ -183,7 +192,8 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
             "Q4": ("🔴", "Q4 — Выход/минимум"),
         }
         q_emoji, q_desc = quadrant_info.get(quadrant, ("⚪", quadrant))
-        lines.append(f"   📍 {q_emoji} {q_desc}")
+        lines.append(f"{q_emoji} LP POLICY:")
+        lines.append(f"   {q_desc}")
         
         # Quadrant matrix (pre-formatted, no code tags)
         lines.append("")
@@ -199,7 +209,7 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         lines.append(f"   └──────┴──────┘")
         
         lines.append("")
-        lines.append(f"   Dir: {risk_dir:+.2f} (напр.риск) · LP: {risk_lp:+.2f} (LP риск) · F/V: {fv:.1f}x (fee/vol)")
+        lines.append(f"   LP risk: {risk_lp:+.2f} · F/V: {fv:.1f}x (fee/vol)")
         lines.append(f"   Exposure: {max_exp}%")
         lines.append(f"   Range: {range_width}")
         
