@@ -220,17 +220,16 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         else:
             lp_risk_comment = "очень плохо"
         
-        # F/V comment (fee vs IL)
-        if fv > 2.0:
-            fv_comment = "комиссии >> IL"
-        elif fv > 1.5:
-            fv_comment = "комиссии > IL"
-        elif fv > 1.0:
-            fv_comment = "комиссии ≈ IL"
-        elif fv > 0.8:
-            fv_comment = "комиссии < IL"
+        # F/V comment (fee vs IL) - показывает на сколько % комиссии больше/меньше IL
+        if fv >= 2.0:
+            fv_pct = int((fv - 1) * 100)
+            fv_comment = f"комиссии +{fv_pct}% к IL"
+        elif fv >= 1.0:
+            fv_pct = int((fv - 1) * 100)
+            fv_comment = f"комиссии +{fv_pct}% к IL"
         else:
-            fv_comment = "IL >> комиссии"
+            fv_pct = int((1 - fv) * 100)
+            fv_comment = f"IL +{fv_pct}% к комиссиям"
         
         lines.append("")
         lines.append(f"   LP доходность: {risk_lp:+.2f} ({lp_risk_comment})")
