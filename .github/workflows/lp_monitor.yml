@@ -1,0 +1,32 @@
+name: LP Position Monitor
+
+on:
+  schedule:
+    - cron: '0 8,20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Run LP Monitor
+        env:
+          ARB_RPC: ${{ secrets.ARB_RPC }}
+          BSC_RPC: ${{ secrets.BSC_RPC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python lp_monitor.py
+      - run: |
+          git config user.email "bot@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add state/lp_positions.json
+          git diff --staged --quiet || git commit -m "📊 Update LP positions [skip ci]"
+          git push
