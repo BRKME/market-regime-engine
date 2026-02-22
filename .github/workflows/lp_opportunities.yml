@@ -1,0 +1,31 @@
+name: LP Opportunities Scanner
+
+on:
+  schedule:
+    # Раз в день в 10:00 UTC (13:00 MSK)
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Run LP Scanner
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python lp_opportunities.py
+      - run: |
+          git config user.email "bot@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add state/lp_opportunities.json
+          git diff --staged --quiet || git commit -m "🔍 Update LP opportunities [skip ci]"
+          git push
