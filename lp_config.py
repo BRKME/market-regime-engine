@@ -261,6 +261,93 @@ PRICE_CACHE_TTL = 300  # 5 minutes
 
 # State file path
 LP_STATE_FILE = "state/lp_positions.json"
+LP_OPPORTUNITIES_FILE = "state/lp_opportunities.json"
 
 # History retention (days)
 HISTORY_RETENTION_DAYS = 30
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OPPORTUNITIES SCANNER SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# DeFiLlama API
+DEFILLAMA_POOLS_URL = "https://yields.llama.fi/pools"
+
+# Chains to scan
+SCAN_CHAINS = ["Arbitrum", "BSC"]
+
+# Protocols to include
+SCAN_PROTOCOLS = ["uniswap-v3", "pancakeswap-amm-v3"]
+
+# Minimum thresholds
+MIN_TVL_USD = 100_000          # $100K minimum TVL
+MIN_VOLUME_24H_USD = 50_000    # $50K minimum daily volume
+MIN_APY = 1.0                   # 1% minimum APY
+
+# Token categories
+STABLECOINS = {
+    "USDC", "USDT", "DAI", "BUSD", "FRAX", "TUSD", "USDP", "GUSD",
+    "USDC.E", "USDT.E", "USDC.e", "USDT.e",
+    "USDC-CIRCLE", "USDCE", "USDT-TETHER",
+}
+
+MAJOR_TOKENS = {
+    # Native / Wrapped
+    "WETH", "ETH", "WBTC", "BTC", "BTCB",
+    "WBNB", "BNB",
+    # L2 tokens
+    "ARB", "OP", "MATIC", "BASE",
+    # Blue chips DeFi
+    "LINK", "UNI", "AAVE", "MKR", "SNX", "CRV", "LDO",
+    "GMX", "PENDLE", "RDNT", "GNS",
+    # LST/LRT
+    "WSTETH", "STETH", "RETH", "CBETH", "FRXETH", "SFRXETH",
+    "WEETH", "EZETH", "RSETH",
+}
+
+# Combined whitelist (stables + majors)
+TOKEN_WHITELIST = STABLECOINS | MAJOR_TOKENS
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# IL RISK MATRIX
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# IL Risk scores based on token pair type
+IL_RISK_MATRIX = {
+    ("stable", "stable"): 0.00,   # USDC-USDT
+    ("stable", "major"):  0.30,   # USDC-WETH
+    ("major", "stable"):  0.30,   # WETH-USDC
+    ("major", "major"):   0.50,   # WETH-WBTC
+    ("stable", "alt"):    0.70,   # USDC-ALT
+    ("alt", "stable"):    0.70,   # ALT-USDC
+    ("major", "alt"):     0.80,   # WETH-ALT
+    ("alt", "major"):     0.80,   # ALT-WETH
+    ("alt", "alt"):       0.95,   # ALT-ALT
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REGIME PENALTIES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# How much to penalize IL risk based on market regime
+REGIME_IL_PENALTY = {
+    # LP-friendly regimes (low penalty)
+    "HARVEST":       0.15,
+    "RANGE":         0.20,
+    "MEAN_REVERT":   0.25,
+    
+    # Neutral
+    "VOLATILE_CHOP": 0.35,
+    "TRANSITION":    0.35,
+    "UNKNOWN":       0.40,
+    
+    # Risky regimes (high penalty)
+    "BREAKOUT":      0.50,
+    "GAP_RISK":      0.55,
+    "TRENDING":      0.60,
+    "BEAR":          0.55,  # Bearish trend = IL risk
+    "BULL":          0.45,  # Bullish trend = moderate IL risk
+    "CHURN":         0.70,
+    "AVOID":         0.90,
+}
+
