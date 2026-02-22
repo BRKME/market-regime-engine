@@ -1,0 +1,266 @@
+"""
+LP Configuration - Wallets, RPC, Contracts
+Version: 1.0.0
+
+Поддерживаемые сети: Arbitrum, BSC
+Протокол: Uniswap V3 (и форки)
+"""
+
+import os
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WALLETS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+WALLETS = {
+    "0x17e6d71d30d260e30bb7721c63539694ab02b036": "1F_MMW",
+    "0x91dad140af2800b2d660e530b9f42500eee474a0": "2F_MMS",
+    "0x4e7240952c21c811d9e1237a328b927685a21418": "3F_BNB",
+    "0x3c2c34b9bb0b00145142ffee68475e1ac01c92ba": "4F_Exodus",
+    "0x5a51f62d86f5ccb8c7470cea2ac982762049c53c": "5F_BNB",
+}
+
+WALLET_ADDRESSES = list(WALLETS.keys())
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CHAINS CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+CHAINS = {
+    "arbitrum": {
+        "name": "Arbitrum One",
+        "chain_id": 42161,
+        "rpc": os.getenv("ARB_RPC", "https://arbitrum.llamarpc.com"),
+        "rpc_fallbacks": [
+            "https://arb1.arbitrum.io/rpc",
+            "https://arbitrum-one.public.blastapi.io",
+            "https://rpc.ankr.com/arbitrum",
+        ],
+        "position_manager": "0xC36442b4a4522E871399CD717aBDD847Ab11FE88",  # Uniswap V3
+        "factory": "0x1F98431c8aD98523631AE4a59f267346ea31F984",
+        "quoter": "0xb27308f9F90D607463bb33eA1BeBb41C27CE5AB6",
+        "platform": "arbitrum-one",  # CoinGecko platform ID
+        "explorer": "https://arbiscan.io",
+        "native_token": "ETH",
+    },
+    "bsc": {
+        "name": "BNB Smart Chain",
+        "chain_id": 56,
+        "rpc": os.getenv("BSC_RPC", "https://bsc.llamarpc.com"),
+        "rpc_fallbacks": [
+            "https://bsc-dataseed1.binance.org",
+            "https://bsc-dataseed2.binance.org",
+            "https://rpc.ankr.com/bsc",
+        ],
+        "position_manager": "0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613",  # PancakeSwap V3
+        "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+        "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
+        "platform": "binance-smart-chain",  # CoinGecko platform ID
+        "explorer": "https://bscscan.com",
+        "native_token": "BNB",
+    },
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TOKEN WHITELIST (Stablecoins and major tokens for price reference)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+STABLECOINS = {
+    # Arbitrum
+    "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8": ("USDC.e", 6),
+    "0xaf88d065e77c8cc2239327c5edb3a432268e5831": ("USDC", 6),
+    "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9": ("USDT", 6),
+    "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1": ("DAI", 18),
+    # BSC
+    "0x55d398326f99059ff775485246999027b3197955": ("USDT", 18),
+    "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d": ("USDC", 18),
+    "0xe9e7cea3dedca5984780bafc599bd69add087d56": ("BUSD", 18),
+    "0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3": ("DAI", 18),
+}
+
+# Native wrapped tokens
+WRAPPED_NATIVE = {
+    "arbitrum": "0x82af49447d8a07e3bd95bd0d56f35241523fbab1",  # WETH
+    "bsc": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",  # WBNB
+}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ABIs
+# ═══════════════════════════════════════════════════════════════════════════════
+
+POSITION_MANAGER_ABI = [
+    {
+        "inputs": [{"internalType": "address", "name": "owner", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"internalType": "uint256", "name": "balance", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "address", "name": "owner", "type": "address"},
+            {"internalType": "uint256", "name": "index", "type": "uint256"}
+        ],
+        "name": "tokenOfOwnerByIndex",
+        "outputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+        "name": "positions",
+        "outputs": [
+            {"internalType": "uint96", "name": "nonce", "type": "uint96"},
+            {"internalType": "address", "name": "operator", "type": "address"},
+            {"internalType": "address", "name": "token0", "type": "address"},
+            {"internalType": "address", "name": "token1", "type": "address"},
+            {"internalType": "uint24", "name": "fee", "type": "uint24"},
+            {"internalType": "int24", "name": "tickLower", "type": "int24"},
+            {"internalType": "int24", "name": "tickUpper", "type": "int24"},
+            {"internalType": "uint128", "name": "liquidity", "type": "uint128"},
+            {"internalType": "uint256", "name": "feeGrowthInside0LastX128", "type": "uint256"},
+            {"internalType": "uint256", "name": "feeGrowthInside1LastX128", "type": "uint256"},
+            {"internalType": "uint128", "name": "tokensOwed0", "type": "uint128"},
+            {"internalType": "uint128", "name": "tokensOwed1", "type": "uint128"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]
+
+FACTORY_ABI = [
+    {
+        "inputs": [
+            {"internalType": "address", "name": "tokenA", "type": "address"},
+            {"internalType": "address", "name": "tokenB", "type": "address"},
+            {"internalType": "uint24", "name": "fee", "type": "uint24"}
+        ],
+        "name": "getPool",
+        "outputs": [{"internalType": "address", "name": "pool", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]
+
+POOL_ABI = [
+    {
+        "inputs": [],
+        "name": "slot0",
+        "outputs": [
+            {"internalType": "uint160", "name": "sqrtPriceX96", "type": "uint160"},
+            {"internalType": "int24", "name": "tick", "type": "int24"},
+            {"internalType": "uint16", "name": "observationIndex", "type": "uint16"},
+            {"internalType": "uint16", "name": "observationCardinality", "type": "uint16"},
+            {"internalType": "uint16", "name": "observationCardinalityNext", "type": "uint16"},
+            {"internalType": "uint8", "name": "feeProtocol", "type": "uint8"},
+            {"internalType": "bool", "name": "unlocked", "type": "bool"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "liquidity",
+        "outputs": [{"internalType": "uint128", "name": "", "type": "uint128"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "feeGrowthGlobal0X128",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "feeGrowthGlobal1X128",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [{"internalType": "int24", "name": "tick", "type": "int24"}],
+        "name": "ticks",
+        "outputs": [
+            {"internalType": "uint128", "name": "liquidityGross", "type": "uint128"},
+            {"internalType": "int128", "name": "liquidityNet", "type": "int128"},
+            {"internalType": "uint256", "name": "feeGrowthOutside0X128", "type": "uint256"},
+            {"internalType": "uint256", "name": "feeGrowthOutside1X128", "type": "uint256"},
+            {"internalType": "int56", "name": "tickCumulativeOutside", "type": "int56"},
+            {"internalType": "uint160", "name": "secondsPerLiquidityOutsideX128", "type": "uint160"},
+            {"internalType": "uint32", "name": "secondsOutside", "type": "uint32"},
+            {"internalType": "bool", "name": "initialized", "type": "bool"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "token0",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "token1",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "fee",
+        "outputs": [{"internalType": "uint24", "name": "", "type": "uint24"}],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]
+
+ERC20_ABI = [
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [{"name": "", "type": "uint8"}],
+        "type": "function"
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "symbol",
+        "outputs": [{"name": "", "type": "string"}],
+        "type": "function"
+    },
+    {
+        "constant": True,
+        "inputs": [],
+        "name": "name",
+        "outputs": [{"name": "", "type": "string"}],
+        "type": "function"
+    },
+    {
+        "constant": True,
+        "inputs": [{"name": "account", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "type": "function"
+    }
+]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SETTINGS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Minimum position value to track (USD)
+MIN_POSITION_VALUE_USD = 10.0
+
+# Price cache TTL (seconds)
+PRICE_CACHE_TTL = 300  # 5 minutes
+
+# State file path
+LP_STATE_FILE = "state/lp_positions.json"
+
+# History retention (days)
+HISTORY_RETENTION_DAYS = 30
