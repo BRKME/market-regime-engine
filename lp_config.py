@@ -276,8 +276,8 @@ DEFILLAMA_POOLS_URL = "https://yields.llama.fi/pools"
 # Chains to scan
 SCAN_CHAINS = ["Arbitrum", "BSC"]
 
-# Protocols to include
-SCAN_PROTOCOLS = ["uniswap-v3", "pancakeswap-amm-v3"]
+# Protocols to include (только Uniswap V3)
+SCAN_PROTOCOLS = ["uniswap-v3"]
 
 # Minimum thresholds
 MIN_TVL_USD = 100_000          # $100K minimum TVL
