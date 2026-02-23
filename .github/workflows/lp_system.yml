@@ -1,0 +1,47 @@
+name: LP Intelligence System
+
+on:
+  schedule:
+    # 7:00 MSK (04:00 UTC)
+    - cron: '0 4 * * *'
+    # 19:00 MSK (16:00 UTC)
+    - cron: '0 16 * * *'
+  
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lp-report:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Run LP System
+        env:
+          ARB_RPC: ${{ secrets.ARB_RPC }}
+          BSC_RPC: ${{ secrets.BSC_RPC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python lp_system.py
+      
+      - name: Commit state
+        run: |
+          git config user.name "lp-bot"
+          git config user.email "bot@lp-system.local"
+          git add state/
+          git diff --cached --quiet || git commit -m "LP: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
