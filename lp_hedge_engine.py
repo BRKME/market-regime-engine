@@ -75,6 +75,14 @@ class HedgeRecommendation:
     notional_usd: float
     max_premium_usd: float
     platform: str  # Aevo
+    
+    # Live pricing fields (from Aevo API)
+    instrument_name: Optional[str] = None
+    strike_price: Optional[float] = None
+    mark_price: Optional[float] = None
+    iv: Optional[float] = None
+    bid_price: Optional[float] = None
+    ask_price: Optional[float] = None
 
 
 @dataclass
@@ -329,11 +337,33 @@ def generate_recommendations(
     exposure: Dict[str, float],
     hedge_ratio: float,
     eth_price: float,
-    btc_price: float
+    btc_price: float,
+    use_live_pricing: bool = True
 ) -> List[HedgeRecommendation]:
     """Генерируем конкретные рекомендации по опционам"""
     
     recommendations = []
+    live_quotes = None
+    
+    # Try to get live pricing from Aevo
+    if use_live_pricing:
+        try:
+            from aevo_api import get_hedge_quotes
+            
+            eth_notional = exposure.get('ETH', 0) * hedge_ratio
+            btc_notional = exposure.get('BTC', 0) * hedge_ratio
+            
+            if eth_notional > 500 or btc_notional > 500:
+                live_quotes = get_hedge_quotes(
+                    eth_notional=eth_notional if eth_notional > 500 else 0,
+                    btc_notional=btc_notional if btc_notional > 500 else 0,
+                    strike_pct=1 - DEFAULT_STRIKE_DISTANCE,  # 0.90 for -10%
+                    expiry_days=DEFAULT_EXPIRY_DAYS
+                )
+                logger.info("Got live quotes from Aevo")
+        except Exception as e:
+            logger.warning(f"Aevo API failed, using estimates: {e}")
+            live_quotes = None
     
     for asset, exp in exposure.items():
         if exp <= 0:
@@ -348,25 +378,53 @@ def generate_recommendations(
         if notional < 500:  # Минимум $500 на опцион
             continue
         
-        # Страйк -10% от текущей цены
-        if asset == 'ETH':
-            strike_price = eth_price * (1 - DEFAULT_STRIKE_DISTANCE)
-        elif asset == 'BTC':
-            strike_price = btc_price * (1 - DEFAULT_STRIKE_DISTANCE)
+        # Check for live quote
+        live_quote = None
+        if live_quotes:
+            if asset == 'ETH' and live_quotes.get('eth'):
+                live_quote = live_quotes['eth']
+            elif asset == 'BTC' and live_quotes.get('btc'):
+                live_quote = live_quotes['btc']
+        
+        if live_quote:
+            # Use real pricing from Aevo
+            option = live_quote.get('option', {})
+            recommendations.append(HedgeRecommendation(
+                underlying=asset,
+                action='PUT',
+                strike_pct=DEFAULT_STRIKE_DISTANCE,
+                expiry_days=option.get('days_to_expiry', DEFAULT_EXPIRY_DAYS),
+                notional_usd=notional,
+                max_premium_usd=live_quote.get('total_premium_usd', notional * PREMIUM_BUDGET_PCT),
+                platform='Aevo',
+                # Extended fields from live data
+                instrument_name=option.get('instrument_name'),
+                strike_price=option.get('strike'),
+                mark_price=option.get('mark_price'),
+                iv=option.get('iv'),
+                bid_price=option.get('bid_price'),
+                ask_price=option.get('ask_price')
+            ))
         else:
-            continue
-        
-        max_premium = notional * PREMIUM_BUDGET_PCT
-        
-        recommendations.append(HedgeRecommendation(
-            underlying=asset,
-            action='PUT',
-            strike_pct=DEFAULT_STRIKE_DISTANCE,
-            expiry_days=DEFAULT_EXPIRY_DAYS,
-            notional_usd=notional,
-            max_premium_usd=max_premium,
-            platform='Aevo'
-        ))
+            # Fallback to estimates
+            if asset == 'ETH':
+                strike_price = eth_price * (1 - DEFAULT_STRIKE_DISTANCE)
+            elif asset == 'BTC':
+                strike_price = btc_price * (1 - DEFAULT_STRIKE_DISTANCE)
+            else:
+                continue
+            
+            max_premium = notional * PREMIUM_BUDGET_PCT
+            
+            recommendations.append(HedgeRecommendation(
+                underlying=asset,
+                action='PUT',
+                strike_pct=DEFAULT_STRIKE_DISTANCE,
+                expiry_days=DEFAULT_EXPIRY_DAYS,
+                notional_usd=notional,
+                max_premium_usd=max_premium,
+                platform='Aevo'
+            ))
     
     return recommendations
 
@@ -594,10 +652,34 @@ class LPHedgeEngine:
             lines.append("")
             for i, rec in enumerate(d.recommendations, 1):
                 lines.append(f"Предложение #{i} ({rec['underlying']}):")
-                lines.append(f"  {rec['action']} {rec['underlying']} -{rec['strike_pct']:.0%}")
+                
+                # Show instrument name if available (live pricing)
+                if rec.get('instrument_name'):
+                    lines.append(f"  {rec['instrument_name']}")
+                else:
+                    lines.append(f"  {rec['action']} {rec['underlying']} -{rec['strike_pct']:.0%}")
+                
+                # Strike price
+                if rec.get('strike_price'):
+                    lines.append(f"  Страйк: ${rec['strike_price']:,.0f}")
+                
                 lines.append(f"  Срок: {rec['expiry_days']}d")
                 lines.append(f"  Notional: ${rec['notional_usd']:,.0f}")
-                lines.append(f"  Max премия: ${rec['max_premium_usd']:.0f}")
+                
+                # Show real premium if available
+                if rec.get('mark_price'):
+                    lines.append(f"  Премия: ${rec['max_premium_usd']:.2f} (mark: ${rec['mark_price']:.2f})")
+                else:
+                    lines.append(f"  Max премия: ${rec['max_premium_usd']:.0f}")
+                
+                # Show IV if available
+                if rec.get('iv'):
+                    lines.append(f"  IV: {rec['iv']*100:.1f}%")
+                
+                # Show bid/ask if available
+                if rec.get('bid_price') and rec.get('ask_price'):
+                    lines.append(f"  Bid/Ask: ${rec['bid_price']:.2f}/${rec['ask_price']:.2f}")
+                
                 lines.append(f"  Площадка: {rec['platform']}")
         
         # Partial hedge warning
