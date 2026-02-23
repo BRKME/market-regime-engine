@@ -498,7 +498,8 @@ def format_unified_report(
     monitor_data: dict,
     opportunities_data: Optional[dict],
     ai_summary: Optional[str],
-    history: List[dict]
+    history: List[dict],
+    hedge_report: Optional[str] = None
 ) -> str:
     """Format unified Telegram report"""
     
@@ -619,6 +620,11 @@ def format_unified_report(
     else:
         lines.append("🎯 Рекомендация эксперта: (нет ключа OpenAI)")
     
+    # Hedge Report
+    if hedge_report:
+        lines.append("")
+        lines.append(hedge_report)
+    
     return "\n".join(lines)
 
 
@@ -717,9 +723,23 @@ def main():
         else:
             logger.warning("AI summary failed")
     
+    # Stage 4: Hedge Analysis
+    logger.info("\n--- STAGE 4: HEDGE ANALYSIS ---")
+    hedge_report = None
+    try:
+        from lp_hedge_engine import LPHedgeEngine
+        hedge_engine = LPHedgeEngine()
+        if hedge_engine.load_data():
+            hedge_engine.calculate_decision()
+            hedge_engine.save_state()
+            hedge_report = hedge_engine.format_report()
+            logger.info(f"Hedge decision: {hedge_engine.decision.action if hedge_engine.decision else 'N/A'}")
+    except Exception as e:
+        logger.warning(f"Hedge analysis failed: {e}")
+    
     # Generate unified report
     logger.info("\n--- GENERATING REPORT ---")
-    report = format_unified_report(monitor_data, opportunities_data, ai_summary, history)
+    report = format_unified_report(monitor_data, opportunities_data, ai_summary, history, hedge_report)
     
     print("\n" + "=" * 60)
     print(report)
