@@ -45,8 +45,8 @@ class DailySnapshot:
     date: str  # YYYY-MM-DD
     timestamp: str  # ISO format
     tvl: float
-    fees: float
-    fees_collected: float  # Fees собранные (для отслеживания claim)
+    fees: float  # Current uncollected fees
+    fees_cumulative: float  # All fees earned ever (doesn't reset on harvest)
     positions_count: int
     positions_in_range: int
     by_wallet: Dict[str, float]  # wallet_name -> tvl
@@ -83,17 +83,42 @@ def save_history(snapshots: List[dict]):
 
 def add_snapshot(tvl: float, fees: float, positions_count: int, in_range: int, 
                  by_wallet: Dict[str, float], by_wallet_fees: Dict[str, float]):
-    """Add today's snapshot to history"""
+    """Add today's snapshot to history with cumulative fees tracking"""
     snapshots = load_history()
     
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     now = datetime.now(timezone.utc).isoformat()
+    
+    # Calculate cumulative fees
+    # Logic: if current fees < previous fees, user did harvest
+    # We add the positive delta to cumulative, never subtract
+    fees_cumulative = fees  # default for first snapshot
+    
+    if snapshots:
+        # Find the most recent snapshot (any date)
+        prev_snapshot = snapshots[-1]
+        prev_fees = prev_snapshot.get("fees", 0)
+        prev_cumulative = prev_snapshot.get("fees_cumulative", prev_fees)
+        
+        if fees >= prev_fees:
+            # Fees grew normally - add the delta
+            fees_cumulative = prev_cumulative + (fees - prev_fees)
+        else:
+            # Fees dropped = harvest happened
+            # The user collected prev_fees, now accumulating new fees
+            # cumulative = prev_cumulative + (what was harvested is already in cumulative via prev deltas)
+            # We just add current fees as new accumulation since harvest
+            fees_cumulative = prev_cumulative + fees
+            logger.info(f"Detected harvest: fees dropped from ${prev_fees:.2f} to ${fees:.2f}")
     
     # Check if today's snapshot exists
     existing_idx = None
     for i, s in enumerate(snapshots):
         if s.get("date") == today:
             existing_idx = i
+            # Keep the higher cumulative (in case of multiple runs per day)
+            prev_today_cumulative = s.get("fees_cumulative", 0)
+            fees_cumulative = max(fees_cumulative, prev_today_cumulative)
             break
     
     snapshot = {
@@ -101,6 +126,7 @@ def add_snapshot(tvl: float, fees: float, positions_count: int, in_range: int,
         "timestamp": now,
         "tvl": tvl,
         "fees": fees,
+        "fees_cumulative": fees_cumulative,
         "positions_count": positions_count,
         "positions_in_range": in_range,
         "by_wallet": by_wallet,
@@ -118,6 +144,8 @@ def add_snapshot(tvl: float, fees: float, positions_count: int, in_range: int,
     snapshots.sort(key=lambda x: x.get("date", ""))
     
     save_history(snapshots)
+    
+    logger.info(f"Snapshot saved: TVL=${tvl:.0f}, fees=${fees:.2f}, cumulative=${fees_cumulative:.2f}")
     return snapshot
 
 
@@ -147,43 +175,46 @@ def get_tvl_change(snapshots: List[dict], current_tvl: float, days: int) -> Tupl
     return abs_change, pct_change
 
 
-def get_fees_earned(snapshots: List[dict], current_fees: float, days: int) -> Optional[float]:
-    """Calculate fees earned over N days"""
+def calculate_portfolio_apy(snapshots: List[dict], current_tvl: float) -> Optional[float]:
+    """Calculate portfolio APY based on cumulative fees earned"""
     if len(snapshots) < 2:
         return None
     
-    target_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    # Get current snapshot (last one)
+    current = snapshots[-1]
+    current_cumulative = current.get("fees_cumulative", 0)
     
-    # Find closest snapshot to target date
-    past_snapshot = None
-    for s in snapshots:
-        if s.get("date", "") <= target_date:
-            past_snapshot = s
-    
-    if not past_snapshot:
-        return None
-    
-    past_fees = past_snapshot.get("fees", 0)
-    
-    # Fees earned = current - past (if positive, means accumulated; if negative, means claimed)
-    fees_delta = current_fees - past_fees
-    
-    # If negative, user claimed fees - we can't calculate accurately
-    if fees_delta < 0:
-        return None
-    
-    return fees_delta
-
-
-def calculate_portfolio_apy(snapshots: List[dict], current_tvl: float, current_fees: float) -> Optional[float]:
-    """Calculate portfolio APY based on fees earned"""
-    # Try to calculate from 7 days first, then 1 day
-    for days in [7, 1]:
-        fees_earned = get_fees_earned(snapshots, current_fees, days)
-        if fees_earned is not None and fees_earned > 0 and current_tvl > 0:
-            # Annualize
-            apy = (fees_earned / current_tvl) * (365 / days) * 100
-            return apy
+    # Try to find snapshot from ~7 days ago, then 3 days, then 1 day
+    for days in [7, 3, 1]:
+        target_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        
+        past_snapshot = None
+        for s in snapshots:
+            if s.get("date", "") <= target_date:
+                past_snapshot = s
+        
+        if past_snapshot and past_snapshot.get("date") != current.get("date"):
+            past_cumulative = past_snapshot.get("fees_cumulative", 0)
+            past_tvl = past_snapshot.get("tvl", 0)
+            
+            # Calculate fees earned in this period
+            fees_earned = current_cumulative - past_cumulative
+            
+            if fees_earned > 0 and past_tvl > 0:
+                # Average TVL over period
+                avg_tvl = (current_tvl + past_tvl) / 2
+                
+                # Calculate actual days between snapshots
+                from datetime import datetime as dt
+                current_date = dt.strptime(current.get("date"), "%Y-%m-%d")
+                past_date = dt.strptime(past_snapshot.get("date"), "%Y-%m-%d")
+                actual_days = (current_date - past_date).days
+                
+                if actual_days > 0:
+                    # Annualize
+                    apy = (fees_earned / avg_tvl) * (365 / actual_days) * 100
+                    logger.info(f"APY calc: ${fees_earned:.2f} earned over {actual_days}d, avg TVL ${avg_tvl:.0f} = {apy:.1f}%")
+                    return apy
     
     return None
 
@@ -703,8 +734,8 @@ def main():
     # Reload history after adding snapshot
     history = load_history()
     
-    # Calculate portfolio APY
-    portfolio_apy = calculate_portfolio_apy(history, monitor_data["tvl"], monitor_data["fees"])
+    # Calculate portfolio APY (uses cumulative fees from history)
+    portfolio_apy = calculate_portfolio_apy(history, monitor_data["tvl"])
     if portfolio_apy:
         logger.info(f"Portfolio APY: {portfolio_apy:.1f}%")
     
