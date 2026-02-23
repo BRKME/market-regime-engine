@@ -46,9 +46,11 @@ class DailySnapshot:
     timestamp: str  # ISO format
     tvl: float
     fees: float
+    fees_collected: float  # Fees собранные (для отслеживания claim)
     positions_count: int
     positions_in_range: int
     by_wallet: Dict[str, float]  # wallet_name -> tvl
+    by_wallet_fees: Dict[str, float]  # wallet_name -> fees
 
 
 def load_history() -> List[dict]:
@@ -79,7 +81,8 @@ def save_history(snapshots: List[dict]):
     logger.info(f"History saved: {len(snapshots)} snapshots")
 
 
-def add_snapshot(tvl: float, fees: float, positions_count: int, in_range: int, by_wallet: Dict[str, float]):
+def add_snapshot(tvl: float, fees: float, positions_count: int, in_range: int, 
+                 by_wallet: Dict[str, float], by_wallet_fees: Dict[str, float]):
     """Add today's snapshot to history"""
     snapshots = load_history()
     
@@ -101,6 +104,7 @@ def add_snapshot(tvl: float, fees: float, positions_count: int, in_range: int, b
         "positions_count": positions_count,
         "positions_in_range": in_range,
         "by_wallet": by_wallet,
+        "by_wallet_fees": by_wallet_fees,
     }
     
     if existing_idx is not None:
@@ -119,7 +123,7 @@ def add_snapshot(tvl: float, fees: float, positions_count: int, in_range: int, b
 
 def get_tvl_change(snapshots: List[dict], current_tvl: float, days: int) -> Tuple[Optional[float], Optional[float]]:
     """Get TVL change over N days. Returns (absolute_change, percent_change)"""
-    if not snapshots:
+    if len(snapshots) < 2:
         return None, None
     
     target_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -131,11 +135,7 @@ def get_tvl_change(snapshots: List[dict], current_tvl: float, days: int) -> Tupl
             past_snapshot = s
     
     if not past_snapshot:
-        # Try to get oldest available
-        if snapshots:
-            past_snapshot = snapshots[0]
-        else:
-            return None, None
+        return None, None
     
     past_tvl = past_snapshot.get("tvl", 0)
     if past_tvl == 0:
@@ -147,10 +147,55 @@ def get_tvl_change(snapshots: List[dict], current_tvl: float, days: int) -> Tupl
     return abs_change, pct_change
 
 
+def get_fees_earned(snapshots: List[dict], current_fees: float, days: int) -> Optional[float]:
+    """Calculate fees earned over N days"""
+    if len(snapshots) < 2:
+        return None
+    
+    target_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    
+    # Find closest snapshot to target date
+    past_snapshot = None
+    for s in snapshots:
+        if s.get("date", "") <= target_date:
+            past_snapshot = s
+    
+    if not past_snapshot:
+        return None
+    
+    past_fees = past_snapshot.get("fees", 0)
+    
+    # Fees earned = current - past (if positive, means accumulated; if negative, means claimed)
+    fees_delta = current_fees - past_fees
+    
+    # If negative, user claimed fees - we can't calculate accurately
+    if fees_delta < 0:
+        return None
+    
+    return fees_delta
+
+
+def calculate_portfolio_apy(snapshots: List[dict], current_tvl: float, current_fees: float) -> Optional[float]:
+    """Calculate portfolio APY based on fees earned"""
+    # Try to calculate from 7 days first, then 1 day
+    for days in [7, 1]:
+        fees_earned = get_fees_earned(snapshots, current_fees, days)
+        if fees_earned is not None and fees_earned > 0 and current_tvl > 0:
+            # Annualize
+            apy = (fees_earned / current_tvl) * (365 / days) * 100
+            return apy
+    
+    return None
+
+
 def format_change(abs_change: Optional[float], pct_change: Optional[float]) -> str:
     """Format change for display"""
     if abs_change is None or pct_change is None:
-        return "n/a"
+        return "нет данных"
+    
+    # Don't show +$0 changes (means no historical data)
+    if abs_change == 0 and pct_change == 0:
+        return "нет данных"
     
     sign = "+" if abs_change >= 0 else ""
     return f"{sign}${abs_change:,.0f} ({sign}{pct_change:.1f}%)"
@@ -251,8 +296,8 @@ def run_opportunities() -> Optional[dict]:
         return None
 
 
-def run_advisor(monitor_data: dict, opportunities_data: Optional[dict]) -> Optional[str]:
-    """Run LP Advisor and return AI summary"""
+def run_advisor(monitor_data: dict, opportunities_data: Optional[dict], history: List[dict]) -> Optional[str]:
+    """Run LP Advisor with proper APY and regime analysis"""
     
     # Check for OpenAI key first
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -261,73 +306,167 @@ def run_advisor(monitor_data: dict, opportunities_data: Optional[dict]) -> Optio
         return None
     
     try:
-        # Build context for AI
+        # === BUILD ANALYSIS CONTEXT ===
+        
         tvl = monitor_data.get("tvl", 0)
         fees = monitor_data.get("fees", 0)
-        count = monitor_data.get("count", 0)
-        in_range = monitor_data.get("in_range", 0)
-        out_range = count - in_range
-        
         positions = monitor_data.get("positions", [])
-        
-        # Group positions by wallet
-        from collections import defaultdict
-        wallet_positions = defaultdict(list)
-        for p in positions:
-            wallet_name = p.get("wallet_name", "Unknown")
-            symbol = f"{p.get('token0_symbol', '')}-{p.get('token1_symbol', '')}"
-            balance = p.get("balance_usd", 0)
-            fees_pos = p.get("uncollected_fees_usd", 0)
-            status = "в диапазоне" if p.get("in_range", False) else "ВНЕ ДИАПАЗОНА"
-            wallet_positions[wallet_name].append(f"{symbol}: ${balance:.0f}, fees: ${fees_pos:.2f} ({status})")
-        
-        # Format wallet details
-        wallet_details = []
-        for wallet_name in sorted(wallet_positions.keys()):
-            positions_str = "; ".join(wallet_positions[wallet_name])
-            wallet_total = sum(p.get("balance_usd", 0) for p in positions if p.get("wallet_name") == wallet_name)
-            wallet_details.append(f"{wallet_name} (${wallet_total:.0f}): {positions_str}")
         
         # Regime info
         regime = opportunities_data.get("regime", "UNKNOWN") if opportunities_data else "UNKNOWN"
         regime_penalty = opportunities_data.get("regime_penalty", 0.4) if opportunities_data else 0.4
         
-        # Top pools
+        # Portfolio APY (calculated from history)
+        portfolio_apy = opportunities_data.get("portfolio_apy") if opportunities_data else None
+        
+        # Benchmark - average of top 5 pools
+        benchmark_apy = None
         top_pools = []
         if opportunities_data and opportunities_data.get("top_pools"):
-            for p in opportunities_data["top_pools"][:5]:
-                top_pools.append(f"{p['symbol']}: {p['risk_adj_apy']:.1f}%")
+            top_pools = opportunities_data["top_pools"][:5]
+            if top_pools:
+                benchmark_apy = sum(p.get("risk_adj_apy", 0) for p in top_pools) / len(top_pools)
         
-        prompt = f"""Ты LP-советник. Анализируй портфель Uniswap V3 LP позиций.
+        # === ANALYZE EACH POSITION FOR REGIME FIT ===
+        
+        # Token type classification
+        def get_token_type(symbol: str) -> str:
+            s = symbol.upper()
+            stables = {"USDC", "USDT", "DAI", "BUSD", "FRAX", "FDUSD"}
+            majors = {"WETH", "ETH", "WBTC", "BTC", "BTCB", "WBNB", "BNB"}
+            if s in stables:
+                return "stable"
+            if s in majors:
+                return "major"
+            return "alt"
+        
+        # Regime suitability
+        def get_regime_fit(t0_type: str, t1_type: str, regime: str) -> str:
+            """Evaluate if pair fits current regime"""
+            pair_type = f"{t0_type}/{t1_type}"
+            
+            # Stable/stable - always good
+            if t0_type == "stable" and t1_type == "stable":
+                return "отлично"
+            
+            # Stable/major - good in most regimes
+            if (t0_type == "stable" and t1_type == "major") or (t0_type == "major" and t1_type == "stable"):
+                if regime in ["BEAR", "TRENDING", "CHURN"]:
+                    return "умеренно (риск IL)"
+                return "хорошо"
+            
+            # Major/major - moderate IL risk
+            if t0_type == "major" and t1_type == "major":
+                if regime in ["BEAR", "TRENDING"]:
+                    return "риск IL при тренде"
+                return "хорошо"
+            
+            # Anything with alt - high risk
+            if t0_type == "alt" or t1_type == "alt":
+                if regime in ["BEAR", "TRENDING", "CHURN"]:
+                    return "высокий риск IL!"
+                return "умеренный риск"
+            
+            return "неизвестно"
+        
+        # Analyze positions
+        position_analyses = []
+        for p in positions:
+            t0 = p.get("token0_symbol", "")
+            t1 = p.get("token1_symbol", "")
+            balance = p.get("balance_usd", 0)
+            in_range = p.get("in_range", False)
+            wallet = p.get("wallet_name", "")
+            
+            t0_type = get_token_type(t0)
+            t1_type = get_token_type(t1)
+            regime_fit = get_regime_fit(t0_type, t1_type, regime)
+            
+            position_analyses.append({
+                "wallet": wallet,
+                "pair": f"{t0}-{t1}",
+                "balance": balance,
+                "in_range": in_range,
+                "type": f"{t0_type}/{t1_type}",
+                "regime_fit": regime_fit,
+            })
+        
+        # Group by wallet for summary
+        from collections import defaultdict
+        by_wallet = defaultdict(list)
+        for pa in position_analyses:
+            by_wallet[pa["wallet"]].append(pa)
+        
+        # === BUILD AI PROMPT ===
+        
+        # APY comparison section
+        apy_section = ""
+        if portfolio_apy and benchmark_apy:
+            diff = portfolio_apy - benchmark_apy
+            if diff > 5:
+                apy_section = f"Ваш портфель: {portfolio_apy:.1f}% APY, бенчмарк: {benchmark_apy:.1f}%. Вы обгоняете рынок на {diff:.1f}%!"
+            elif diff > -5:
+                apy_section = f"Ваш портфель: {portfolio_apy:.1f}% APY, бенчмарк: {benchmark_apy:.1f}%. Примерно на уровне рынка."
+            else:
+                apy_section = f"Ваш портфель: {portfolio_apy:.1f}% APY, бенчмарк: {benchmark_apy:.1f}%. Отстаёте на {abs(diff):.1f}%."
+        elif portfolio_apy:
+            apy_section = f"Ваш портфель: {portfolio_apy:.1f}% APY (недостаточно данных для сравнения с бенчмарком)."
+        else:
+            apy_section = "APY портфеля: недостаточно исторических данных (нужно минимум 2 дня)."
+        
+        # Regime section
+        regime_descriptions = {
+            "BULL": "бычий тренд - рынок растёт",
+            "BEAR": "медвежий тренд - рынок падает",
+            "RANGE": "боковик - рынок консолидируется",
+            "TRENDING": "сильный тренд",
+            "VOLATILE_CHOP": "высокая волатильность без направления",
+            "TRANSITION": "переходный период, неопределённость",
+            "HARVEST": "идеально для LP",
+            "CHURN": "хаотичное движение",
+        }
+        regime_desc = regime_descriptions.get(regime, regime)
+        
+        # Position details by wallet
+        wallet_details = []
+        for wallet_name in sorted(by_wallet.keys()):
+            positions_info = []
+            for pa in by_wallet[wallet_name]:
+                status = "✓" if pa["in_range"] else "✗"
+                positions_info.append(f"{pa['pair']} (${pa['balance']:.0f}, {pa['type']}, {pa['regime_fit']})")
+            wallet_details.append(f"{wallet_name}: {'; '.join(positions_info)}")
+        
+        prompt = f"""Ты LP-аналитик. Оцени портфель Uniswap V3 LP позиций.
 
-КОНТЕКСТ РЫНКА:
-- Режим: {regime} (штраф IL: {regime_penalty:.0%})
-- Если режим BEAR с высоким штрафом IL, это НЕ означает срочно перекладываться
-- При сильных просадках (BTC -5% за день) часто бывает отскок
-- Не рекомендуй срочных действий если позиции в диапазоне и приносят fees
+=== ДОХОДНОСТЬ ===
+{apy_section}
 
-ПОРТФЕЛЬ:
-- TVL: ${tvl:,.0f}
-- Накопленные fees: ${fees:.2f}
-- Позиций: {count}, в диапазоне: {in_range}, вне: {out_range}
+Топ пулы на рынке для сравнения:
+{chr(10).join([f"- {p['symbol']}: {p['risk_adj_apy']:.1f}% APY" for p in top_pools[:3]]) if top_pools else "Нет данных"}
 
-ПОЗИЦИИ ПО КОШЕЛЬКАМ:
+=== ФАЗА РЫНКА ===
+Текущий режим: {regime} ({regime_desc})
+Штраф IL: {regime_penalty:.0%}
+
+Что это значит для LP:
+- BEAR/TRENDING: активы падают/растут сильно → высокий Impermanent Loss
+- RANGE/HARVEST: боковик → идеально для LP, IL минимален
+- При текущем режиме {regime} рекомендуется: {'stable пары или широкие диапазоны' if regime in ['BEAR', 'TRENDING', 'CHURN'] else 'можно использовать стандартные стратегии'}
+
+=== ПОЗИЦИИ ПО КОШЕЛЬКАМ ===
 {chr(10).join(wallet_details)}
 
-ТОП ПУЛЫ НА РЫНКЕ:
-{chr(10).join(top_pools) if top_pools else "N/A"}
+=== ЗАДАНИЕ ===
+Дай краткую оценку (3-4 предложения):
+1. Сравнение доходности портфеля с бенчмарком
+2. Насколько текущие пары подходят под режим {regime}
+3. Конкретные рекомендации (если нужны) или "портфель оптимален"
 
-ЗАДАНИЕ:
-1. Дай КРАТКУЮ общую оценку (1-2 предложения)
-2. По КАЖДОМУ кошельку напиши:
-   - Если всё ок: "MMA_X: ок"
-   - Если есть проблема: "MMA_X: [проблема и рекомендация]"
-3. Не рекомендуй перекладываться если позиции работают нормально
-4. Учитывай что при просадках рынка часто бывает отскок
+НЕ ПАНИКУЙ при просадках - это часть рынка. Фокус на структуре портфеля, а не на краткосрочных движениях.
+Ответ на русском, максимум 500 символов."""
 
-Ответ на русском, максимум 400 символов."""
-
-        # Call OpenAI
+        # === CALL OPENAI ===
+        
         url = "https://api.openai.com/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {openai_key}",
@@ -338,11 +477,11 @@ def run_advisor(monitor_data: dict, opportunities_data: Optional[dict]) -> Optio
             "messages": [
                 {
                     "role": "system",
-                    "content": "Ты краткий и практичный DeFi LP советник. Не паникуй при просадках рынка. Фокус на реальных проблемах: позиции вне диапазона, накопленные fees которые пора собрать."
+                    "content": "Ты профессиональный DeFi LP аналитик. Даёшь практичные оценки без паники. Понимаешь Impermanent Loss и влияние рыночных режимов на LP позиции."
                 },
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": 300,
+            "max_tokens": 350,
             "temperature": 0.7
         }
         
@@ -359,6 +498,8 @@ def run_advisor(monitor_data: dict, opportunities_data: Optional[dict]) -> Optio
             
     except Exception as e:
         logger.error(f"Advisor error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -393,8 +534,26 @@ def format_unified_report(
     lines.append(f"Fees: ${fees:,.2f}")
     lines.append(f"In Range: {in_range}/{count}")
     
-    # TVL Changes
-    if history:
+    # Portfolio APY if available
+    portfolio_apy = opportunities_data.get("portfolio_apy") if opportunities_data else None
+    benchmark_apy = None
+    if opportunities_data and opportunities_data.get("top_pools"):
+        top_5 = opportunities_data["top_pools"][:5]
+        if top_5:
+            benchmark_apy = sum(p.get("risk_adj_apy", 0) for p in top_5) / len(top_5)
+    
+    if portfolio_apy:
+        apy_line = f"APY: {portfolio_apy:.1f}%"
+        if benchmark_apy:
+            diff = portfolio_apy - benchmark_apy
+            if diff > 0:
+                apy_line += f" (бенчмарк: {benchmark_apy:.1f}%, +{diff:.1f}%)"
+            else:
+                apy_line += f" (бенчмарк: {benchmark_apy:.1f}%, {diff:.1f}%)"
+        lines.append(apy_line)
+    
+    # TVL Changes - only show if we have real data
+    if len(history) >= 2:
         lines.append("")
         lines.append("Changes:")
         
@@ -531,16 +690,23 @@ def main():
     
     # Save snapshot to history
     by_wallet_tvl = {k: v.get("balance_usd", 0) for k, v in monitor_data.get("by_wallet", {}).items()}
+    by_wallet_fees = {k: v.get("fees_usd", 0) for k, v in monitor_data.get("by_wallet", {}).items()}
     add_snapshot(
         tvl=monitor_data["tvl"],
         fees=monitor_data["fees"],
         positions_count=monitor_data["count"],
         in_range=monitor_data["in_range"],
         by_wallet=by_wallet_tvl,
+        by_wallet_fees=by_wallet_fees,
     )
     
     # Reload history after adding snapshot
     history = load_history()
+    
+    # Calculate portfolio APY
+    portfolio_apy = calculate_portfolio_apy(history, monitor_data["tvl"], monitor_data["fees"])
+    if portfolio_apy:
+        logger.info(f"Portfolio APY: {portfolio_apy:.1f}%")
     
     # Stage 2: Opportunities
     logger.info("\n--- STAGE 2: OPPORTUNITIES ---")
@@ -549,6 +715,8 @@ def main():
     if opportunities_data:
         logger.info(f"Regime: {opportunities_data.get('regime')}")
         logger.info(f"Top pools: {len(opportunities_data.get('top_pools', []))}")
+        # Add portfolio APY to opportunities data for comparison
+        opportunities_data["portfolio_apy"] = portfolio_apy
     else:
         logger.warning("Opportunities scan failed")
     
@@ -560,7 +728,7 @@ def main():
     if not openai_key:
         logger.warning("OPENAI_API_KEY not set - AI summary disabled")
     elif monitor_data:
-        ai_summary = run_advisor(monitor_data, opportunities_data)
+        ai_summary = run_advisor(monitor_data, opportunities_data, history)
         if ai_summary:
             logger.info(f"AI summary: {ai_summary[:100]}...")
         else:
