@@ -27,6 +27,7 @@ from lp_config import (
     STABLECOINS, MAJOR_TOKENS, TOKEN_WHITELIST,
     IL_RISK_MATRIX, REGIME_IL_PENALTY,
     LP_OPPORTUNITIES_FILE,
+    EXCLUDED_FROM_TOP_POOLS,
 )
 
 # Logging
@@ -276,6 +277,10 @@ def filter_pools(pools: List[dict]) -> List[dict]:
         # Parse tokens
         token0, token1 = parse_symbol(symbol)
         if not token0 or not token1:
+            continue
+        
+        # Exclude certain tokens from recommendations (e.g., ARB)
+        if token0.upper() in EXCLUDED_FROM_TOP_POOLS or token1.upper() in EXCLUDED_FROM_TOP_POOLS:
             continue
         
         # Whitelist filter

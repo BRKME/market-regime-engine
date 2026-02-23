@@ -317,6 +317,9 @@ MAJOR_TOKENS = {
     "EIGEN", "ETHFI",
 }
 
+# Токены исключённые из Top pools рекомендаций (но позиции в них мониторим)
+EXCLUDED_FROM_TOP_POOLS = {"ARB"}
+
 # Combined whitelist (stables + majors)
 TOKEN_WHITELIST = STABLECOINS | MAJOR_TOKENS
 

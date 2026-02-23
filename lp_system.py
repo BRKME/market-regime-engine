@@ -211,28 +211,28 @@ def run_opportunities() -> Optional[dict]:
         scanner.save_state()
         rankings = scanner.get_rankings()
         
-        # LP recommendation based on regime
+        # LP recommendation based on regime (Russian)
         regime = scanner.regime
         regime_penalty = REGIME_IL_PENALTY.get(regime, 0.4)
         
-        lp_recommendations = {
-            "HARVEST": "Ideal for LP. Use tight ranges.",
-            "RANGE": "Good for LP. Standard ranges work.",
-            "MEAN_REVERT": "Moderate. Watch range edges.",
-            "VOLATILE_CHOP": "Use wide ranges.",
-            "TRANSITION": "Caution advised.",
-            "BULL": "IL risk on short positions.",
-            "BEAR": "High IL risk. Prefer stable pairs.",
-            "TRENDING": "Minimize LP exposure.",
-            "BREAKOUT": "Possible strong IL.",
-            "CHURN": "Exit risky positions.",
-            "AVOID": "Avoid LP. High risk.",
+        lp_recommendations_ru = {
+            "HARVEST": "Идеальные условия для LP. Используйте узкие диапазоны.",
+            "RANGE": "Хорошие условия. Стандартные диапазоны работают.",
+            "MEAN_REVERT": "Умеренные условия. Следите за границами.",
+            "VOLATILE_CHOP": "Волатильность. Используйте широкие диапазоны.",
+            "TRANSITION": "Переходный период. Осторожность.",
+            "BULL": "Тренд вверх. Риск IL на short позициях.",
+            "BEAR": "Тренд вниз. Высокий риск IL. Предпочитайте stable пары.",
+            "TRENDING": "Сильный тренд. Минимизируйте LP экспозицию.",
+            "BREAKOUT": "Пробой. Возможен сильный IL.",
+            "CHURN": "Хаос. Лучше выйти из рисковых позиций.",
+            "AVOID": "Избегайте LP. Высокий риск.",
         }
         
         return {
             "regime": regime,
             "regime_penalty": regime_penalty,
-            "lp_recommendation": lp_recommendations.get(regime, "Unknown regime."),
+            "lp_recommendation": lp_recommendations_ru.get(regime, "Неизвестный режим."),
             "top_pools": [
                 {
                     "symbol": o.symbol,
@@ -242,7 +242,7 @@ def run_opportunities() -> Optional[dict]:
                     "tvl": o.tvl_usd,
                     "il_risk": o.il_risk_label,
                 }
-                for o in rankings["by_risk_adjusted"][:10]  # Top 10 instead of 5
+                for o in rankings["by_risk_adjusted"][:10]  # Top 10
             ]
         }
         
@@ -270,13 +270,23 @@ def run_advisor(monitor_data: dict, opportunities_data: Optional[dict]) -> Optio
         
         positions = monitor_data.get("positions", [])
         
-        # Position details
-        position_details = []
-        for p in positions[:10]:  # Limit to 10
+        # Group positions by wallet
+        from collections import defaultdict
+        wallet_positions = defaultdict(list)
+        for p in positions:
+            wallet_name = p.get("wallet_name", "Unknown")
             symbol = f"{p.get('token0_symbol', '')}-{p.get('token1_symbol', '')}"
             balance = p.get("balance_usd", 0)
-            status = "in-range" if p.get("in_range", False) else "OUT OF RANGE"
-            position_details.append(f"{symbol}: ${balance:.0f} ({status})")
+            fees_pos = p.get("uncollected_fees_usd", 0)
+            status = "в диапазоне" if p.get("in_range", False) else "ВНЕ ДИАПАЗОНА"
+            wallet_positions[wallet_name].append(f"{symbol}: ${balance:.0f}, fees: ${fees_pos:.2f} ({status})")
+        
+        # Format wallet details
+        wallet_details = []
+        for wallet_name in sorted(wallet_positions.keys()):
+            positions_str = "; ".join(wallet_positions[wallet_name])
+            wallet_total = sum(p.get("balance_usd", 0) for p in positions if p.get("wallet_name") == wallet_name)
+            wallet_details.append(f"{wallet_name} (${wallet_total:.0f}): {positions_str}")
         
         # Regime info
         regime = opportunities_data.get("regime", "UNKNOWN") if opportunities_data else "UNKNOWN"
@@ -285,23 +295,37 @@ def run_advisor(monitor_data: dict, opportunities_data: Optional[dict]) -> Optio
         # Top pools
         top_pools = []
         if opportunities_data and opportunities_data.get("top_pools"):
-            for p in opportunities_data["top_pools"][:3]:
+            for p in opportunities_data["top_pools"][:5]:
                 top_pools.append(f"{p['symbol']}: {p['risk_adj_apy']:.1f}%")
         
-        prompt = f"""LP Portfolio Analysis:
+        prompt = f"""Ты LP-советник. Анализируй портфель Uniswap V3 LP позиций.
 
-Regime: {regime} (IL penalty: {regime_penalty:.0%})
-TVL: ${tvl:,.0f}
-Fees uncollected: ${fees:.2f}
-Positions: {count} total, {in_range} in-range, {out_range} out-of-range
+КОНТЕКСТ РЫНКА:
+- Режим: {regime} (штраф IL: {regime_penalty:.0%})
+- Если режим BEAR с высоким штрафом IL, это НЕ означает срочно перекладываться
+- При сильных просадках (BTC -5% за день) часто бывает отскок
+- Не рекомендуй срочных действий если позиции в диапазоне и приносят fees
 
-Positions:
-{chr(10).join(position_details)}
+ПОРТФЕЛЬ:
+- TVL: ${tvl:,.0f}
+- Накопленные fees: ${fees:.2f}
+- Позиций: {count}, в диапазоне: {in_range}, вне: {out_range}
 
-Top market opportunities:
+ПОЗИЦИИ ПО КОШЕЛЬКАМ:
+{chr(10).join(wallet_details)}
+
+ТОП ПУЛЫ НА РЫНКЕ:
 {chr(10).join(top_pools) if top_pools else "N/A"}
 
-Give brief assessment (2-3 sentences) and 1-2 specific actions. Russian language."""
+ЗАДАНИЕ:
+1. Дай КРАТКУЮ общую оценку (1-2 предложения)
+2. По КАЖДОМУ кошельку напиши:
+   - Если всё ок: "MMA_X: ок"
+   - Если есть проблема: "MMA_X: [проблема и рекомендация]"
+3. Не рекомендуй перекладываться если позиции работают нормально
+4. Учитывай что при просадках рынка часто бывает отскок
+
+Ответ на русском, максимум 400 символов."""
 
         # Call OpenAI
         url = "https://api.openai.com/v1/chat/completions"
@@ -314,11 +338,11 @@ Give brief assessment (2-3 sentences) and 1-2 specific actions. Russian language
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a DeFi LP advisor. Be concise and actionable. Russian language. Max 300 chars."
+                    "content": "Ты краткий и практичный DeFi LP советник. Не паникуй при просадках рынка. Фокус на реальных проблемах: позиции вне диапазона, накопленные fees которые пора собрать."
                 },
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": 200,
+            "max_tokens": 300,
             "temperature": 0.7
         }
         
@@ -432,15 +456,16 @@ def format_unified_report(
         
         lines.append("")
     
-    # Regime with LP policy details
+    # Regime with LP policy details (Russian)
     if opportunities_data:
         regime = opportunities_data.get("regime", "UNKNOWN")
         regime_penalty = opportunities_data.get("regime_penalty", 0)
         lp_recommendation = opportunities_data.get("lp_recommendation", "")
         
-        lines.append(f"Regime: {regime}")
+        lines.append(f"Режим: {regime}")
         if regime_penalty:
-            lines.append(f"  IL Penalty: {regime_penalty:.0%}")
+            # IL Penalty - это штраф за риск Impermanent Loss при текущем режиме рынка
+            lines.append(f"  Штраф IL: {regime_penalty:.0%} (коррекция APY за риск непостоянных потерь)")
         if lp_recommendation:
             lines.append(f"  {lp_recommendation}")
         lines.append("")
@@ -450,7 +475,7 @@ def format_unified_report(
         lines.append("AI:")
         lines.append(ai_summary)
     else:
-        lines.append("AI: (no OpenAI key or error)")
+        lines.append("AI: (нет ключа OpenAI)")
     
     return "\n".join(lines)
 
