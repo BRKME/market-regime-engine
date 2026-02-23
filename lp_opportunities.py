@@ -134,15 +134,15 @@ def get_il_risk(token0_type: str, token1_type: str) -> float:
 def get_il_risk_label(il_risk: float) -> str:
     """Convert IL risk score to label"""
     if il_risk <= 0.15:
-        return "🟢 Very Low"
+        return "Very Low"
     elif il_risk <= 0.35:
-        return "🟡 Low"
+        return "Low"
     elif il_risk <= 0.55:
-        return "🟠 Medium"
+        return "Medium"
     elif il_risk <= 0.75:
-        return "🔴 High"
+        return "High"
     else:
-        return "⛔ Very High"
+        return "Very High"
 
 
 def parse_symbol(symbol: str) -> Tuple[str, str]:
@@ -497,55 +497,52 @@ class LPOpportunitiesScanner:
         
         lines = [
             "#LP #Opportunities",
-            f"🔍 LP Scanner | {now.strftime('%d.%m %H:%M')} UTC",
+            f"📊 LP Scanner | {now.strftime('%d.%m %H:%M')} UTC",
             "",
         ]
         
         # Regime info
-        regime_emoji = "🟢" if self.regime in ["HARVEST", "RANGE", "MEAN_REVERT"] else "🟡" if self.regime in ["VOLATILE_CHOP"] else "🔴"
-        lines.append(f"📊 Regime: {regime_emoji} {self.regime}")
+        lines.append(f"Regime: {self.regime}")
         if self.lp_score:
-            lp_emoji = "🟢" if self.lp_score > 0.3 else "🟡" if self.lp_score > 0 else "🔴"
-            lines.append(f"💧 LP Score: {lp_emoji} {self.lp_score:+.2f}")
-        lines.append(f"⚖️ IL Penalty: {self.regime_penalty:.0%}")
+            lines.append(f"LP Score: {self.lp_score:+.2f}")
+        lines.append(f"IL Penalty: {self.regime_penalty:.0%}")
         lines.append("")
         
         # Stats
-        lines.append(f"📈 Scanned: {summary.total_pools_scanned:,} pools")
-        lines.append(f"✅ Filtered: {summary.pools_after_filter} opportunities")
+        lines.append(f"Scanned: {summary.total_pools_scanned:,} pools")
+        lines.append(f"Filtered: {summary.pools_after_filter} opportunities")
         lines.append("")
         
         # Top 5 by Risk-Adjusted APY
-        lines.append("🏆 TOP 5 Risk-Adjusted:")
-        lines.append("")
+        lines.append("TOP 5 Risk-Adjusted:")
         
         for i, opp in enumerate(rankings["by_risk_adjusted"][:5], 1):
-            chain_emoji = "🔷" if opp.chain.lower() == "arbitrum" else "🟡"
             fee_str = f" {opp.fee_tier}%" if opp.fee_tier else ""
             
-            lines.append(f"{i}. {chain_emoji} {opp.symbol}{fee_str}")
-            lines.append(f"   APY: {opp.apy_total:.1f}% → Risk-Adj: {opp.risk_adjusted_apy:.1f}%")
+            lines.append(f"{i}. {opp.symbol}{fee_str}")
+            lines.append(f"   APY: {opp.apy_total:.1f}% -> Adj: {opp.risk_adjusted_apy:.1f}%")
             lines.append(f"   TVL: ${opp.tvl_usd/1e6:.1f}M | Vol: ${opp.volume_24h_usd/1e6:.1f}M/d")
             lines.append(f"   IL: {opp.il_risk_label}")
-            lines.append("")
+        
+        lines.append("")
         
         # Recommendations
-        lines.append("💡 Recommendations:")
+        lines.append("Recommendations:")
         
         if self.regime in ["HARVEST", "RANGE"]:
-            lines.append("• Regime favorable for LP")
-            lines.append("• Consider tight ranges on stable pairs")
-        elif self.regime in ["TRENDING", "BREAKOUT"]:
-            lines.append("• ⚠️ High IL risk in current regime")
-            lines.append("• Prefer stable/stable or wide ranges")
+            lines.append("- Regime favorable for LP")
+            lines.append("- Consider tight ranges on stable pairs")
+        elif self.regime in ["TRENDING", "BREAKOUT", "BEAR"]:
+            lines.append("- High IL risk in current regime")
+            lines.append("- Prefer stable/stable or wide ranges")
         else:
-            lines.append("• Moderate caution advised")
-            lines.append("• Balance APY vs IL risk")
+            lines.append("- Moderate caution advised")
+            lines.append("- Balance APY vs IL risk")
         
         # Best pick
         if rankings["by_risk_adjusted"]:
             best = rankings["by_risk_adjusted"][0]
-            lines.append(f"• Best risk/reward: {best.symbol}")
+            lines.append(f"- Best risk/reward: {best.symbol}")
         
         return "\n".join(lines)
 

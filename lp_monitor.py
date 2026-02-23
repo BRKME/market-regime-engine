@@ -434,7 +434,7 @@ class LPMonitor:
                         )
                         if position:
                             positions.append(position)
-                            status = "🟢" if position.in_range else "🔴"
+                            status = "+" if position.in_range else "-"
                             logger.info(f"  {status} {position.token0_symbol}-{position.token1_symbol}: ${position.balance_usd:.0f} (fees: ${position.uncollected_fees_usd:.2f})")
                     except Exception as e:
                         logger.warning(f"  Error getting position {i}: {e}")
@@ -676,15 +676,12 @@ class LPMonitor:
         
         # Summary
         in_range_pct = (summary.positions_in_range / summary.total_positions * 100) if summary.total_positions > 0 else 0
-        lines.append(f"💰 TVL: ${summary.total_balance_usd:,.0f}")
-        lines.append(f"💵 Fees: ${summary.total_uncollected_fees_usd:,.2f}")
-        lines.append(f"📍 In Range: {summary.positions_in_range}/{summary.total_positions} ({in_range_pct:.0f}%)")
+        lines.append(f"TVL: ${summary.total_balance_usd:,.0f}")
+        lines.append(f"Fees: ${summary.total_uncollected_fees_usd:,.2f}")
+        lines.append(f"In Range: {summary.positions_in_range}/{summary.total_positions} ({in_range_pct:.0f}%)")
         lines.append("")
         
         # Positions grouped by wallet
-        lines.append("📋 Позиции:")
-        
-        # Group positions by wallet
         from collections import defaultdict
         by_wallet = defaultdict(list)
         for p in self.positions:
@@ -696,17 +693,17 @@ class LPMonitor:
             wallet_total = sum(p.balance_usd for p in wallet_positions)
             wallet_fees = sum(p.uncollected_fees_usd for p in wallet_positions)
             
-            lines.append(f"")
             lines.append(f"{wallet_name}: ${wallet_total:,.0f} (fees: ${wallet_fees:.2f})")
             
             for p in wallet_positions:
-                status = "🟢" if p.in_range else "🔴"
+                status = "+" if p.in_range else "-"
                 lines.append(f"  {status} {p.token0_symbol}-{p.token1_symbol} ${p.balance_usd:,.0f}")
                 if not p.in_range:
                     if p.current_tick < p.tick_lower:
-                        lines.append(f"      ⬇️ Below range {abs(p.distance_to_lower_pct):.1f}%")
+                        lines.append(f"    Below range {abs(p.distance_to_lower_pct):.1f}%")
                     else:
-                        lines.append(f"      ⬆️ Above range {abs(p.distance_to_upper_pct):.1f}%")
+                        lines.append(f"    Above range {abs(p.distance_to_upper_pct):.1f}%")
+            lines.append("")
         
         return "\n".join(lines)
 

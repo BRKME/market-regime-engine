@@ -251,24 +251,24 @@ def generate_action_items(analyses: List[PositionAnalysis], regime: str) -> List
     # Critical items first
     critical = [a for a in analyses if a.status == "CRITICAL"]
     for a in critical:
-        items.append(f"🚨 {a.wallet_name} | {a.symbol}: {a.recommendation} — {a.reason}")
+        items.append(f"! {a.wallet_name} | {a.symbol}: {a.recommendation} - {a.reason}")
     
     # Warning items
     warnings = [a for a in analyses if a.status == "WARNING"]
     for a in warnings:
-        items.append(f"⚠️ {a.wallet_name} | {a.symbol}: {a.recommendation} — {a.reason}")
+        items.append(f"* {a.wallet_name} | {a.symbol}: {a.recommendation} - {a.reason}")
     
     # Regime-specific advice
     if regime in ["BEAR", "TRENDING"]:
-        items.append(f"📉 Regime {regime}: Reduce exposure to volatile pairs. Prefer stable/major.")
+        items.append(f"Regime {regime}: Reduce exposure to volatile pairs. Prefer stable/major.")
     elif regime in ["RANGE", "HARVEST"]:
-        items.append(f"📈 Regime {regime}: Good for LP. Consider tightening ranges for higher APY.")
+        items.append(f"Regime {regime}: Good for LP. Consider tightening ranges for higher APY.")
     
     # Better alternatives
     with_alternatives = [a for a in analyses if a.better_alternative and a.potential_improvement]
     if with_alternatives:
         best = max(with_alternatives, key=lambda x: x.potential_improvement or 0)
-        items.append(f"💡 Consider: {best.better_alternative} (Risk-Adj APY: {best.potential_improvement:.1f}%)")
+        items.append(f"Consider: {best.better_alternative} (Risk-Adj APY: {best.potential_improvement:.1f}%)")
     
     return items[:10]  # Max 10 items
 
@@ -403,19 +403,19 @@ class LPAdvisor:
     def get_regime_recommendation(self) -> str:
         """Get regime-based recommendation"""
         recommendations = {
-            "HARVEST": "🟢 Идеальные условия для LP. Можно использовать узкие диапазоны.",
-            "RANGE": "🟢 Хорошие условия. Стандартные диапазоны работают.",
-            "MEAN_REVERT": "🟡 Умеренно. Следите за границами диапазонов.",
-            "VOLATILE_CHOP": "🟡 Волатильность. Используйте широкие диапазоны.",
-            "TRANSITION": "🟡 Переходный период. Осторожность.",
-            "BULL": "🟠 Тренд вверх. IL риск на short позициях.",
-            "BEAR": "🟠 Тренд вниз. IL риск. Предпочитайте stable пары.",
-            "TRENDING": "🔴 Сильный тренд. Высокий IL риск. Минимизируйте экспозицию.",
-            "BREAKOUT": "🔴 Пробой. Возможен сильный IL. Осторожно.",
-            "CHURN": "🔴 Хаос. Лучше выйти из рисковых позиций.",
-            "AVOID": "⛔ Избегайте LP. Высокий риск.",
+            "HARVEST": "Ideal conditions for LP. Can use tight ranges.",
+            "RANGE": "Good conditions. Standard ranges work.",
+            "MEAN_REVERT": "Moderate. Watch range boundaries.",
+            "VOLATILE_CHOP": "Volatility. Use wide ranges.",
+            "TRANSITION": "Transition period. Caution.",
+            "BULL": "Uptrend. IL risk on short positions.",
+            "BEAR": "Downtrend. IL risk. Prefer stable pairs.",
+            "TRENDING": "Strong trend. High IL risk. Minimize exposure.",
+            "BREAKOUT": "Breakout. Possible strong IL. Caution.",
+            "CHURN": "Chaos. Better to exit risky positions.",
+            "AVOID": "Avoid LP. High risk.",
         }
-        return recommendations.get(self.regime, "❓ Неизвестный режим. Действуйте осторожно.")
+        return recommendations.get(self.regime, "Unknown regime. Act cautiously.")
     
     def generate_report(self) -> AdvisorReport:
         """Generate full report"""
@@ -477,26 +477,24 @@ class LPAdvisor:
         
         lines = [
             "#LP #Advisor",
-            f"🤖 LP Advisor | {now.strftime('%d.%m %H:%M')} UTC",
+            f"📊 LP Advisor | {now.strftime('%d.%m %H:%M')} UTC",
             "",
         ]
         
         # Regime
-        lines.append(f"📊 Regime: {report.regime}")
+        lines.append(f"Regime: {report.regime}")
         lines.append(report.regime_recommendation)
         lines.append("")
         
         # Portfolio summary
-        lines.append("💼 Портфель:")
+        lines.append("Portfolio:")
         lines.append(f"  TVL: ${report.total_tvl:,.0f}")
         lines.append(f"  Fees: ${report.total_fees:,.2f}")
-        lines.append(f"  🟢 {report.positions_healthy} | ⚠️ {report.positions_warning} | 🚨 {report.positions_critical}")
+        lines.append(f"  Healthy: {report.positions_healthy} | Warning: {report.positions_warning} | Critical: {report.positions_critical}")
         lines.append("")
         
         # Position details grouped by wallet
         if self.analyses:
-            lines.append("📋 Позиции:")
-            
             from collections import defaultdict
             by_wallet = defaultdict(list)
             for a in self.analyses:
@@ -505,32 +503,30 @@ class LPAdvisor:
             for wallet_name in sorted(by_wallet.keys()):
                 wallet_analyses = sorted(by_wallet[wallet_name], key=lambda x: x.balance_usd, reverse=True)
                 
-                lines.append(f"")
                 lines.append(f"{wallet_name}:")
                 
                 for a in wallet_analyses:
-                    status = "🟢" if a.in_range else "🔴"
-                    lines.append(f"  {status} {a.symbol} ${a.balance_usd:,.0f} → {a.recommendation}")
+                    status = "+" if a.in_range else "-"
+                    lines.append(f"  {status} {a.symbol} ${a.balance_usd:,.0f} -> {a.recommendation}")
             lines.append("")
         
         # Action items
         if report.action_items:
-            lines.append("📌 Действия:")
+            lines.append("Actions:")
             for item in report.action_items[:5]:
                 lines.append(f"  {item}")
             lines.append("")
         
         # Top opportunities
         if report.top_opportunities:
-            lines.append("🎯 Лучшие пулы:")
+            lines.append("Top pools:")
             for opp in report.top_opportunities[:3]:
-                chain_emoji = "🔷" if opp["chain"].lower() == "arbitrum" else "🟡"
-                lines.append(f"  {chain_emoji} {opp['symbol']}: {opp['risk_adjusted_apy']:.1f}% (adj)")
+                lines.append(f"  {opp['symbol']}: {opp['risk_adjusted_apy']:.1f}% (adj)")
             lines.append("")
         
         # AI Summary
         if report.ai_summary:
-            lines.append("🧠 AI:")
+            lines.append("AI:")
             lines.append(report.ai_summary)
         
         return "\n".join(lines)
