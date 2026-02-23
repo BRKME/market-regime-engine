@@ -591,12 +591,12 @@ def format_unified_report(
         bsc_pools = [p for p in opportunities_data["top_pools"] if p.get("chain", "").lower() == "bsc"]
         
         if arb_pools:
-            lines.append("🏆 Top ARB LP:")
+            lines.append("💎 Top ARB LP:")
             for pool in arb_pools[:5]:
                 lines.append(f"  {pool['symbol']}: {pool['risk_adj_apy']:.1f}%")
         
         if bsc_pools:
-            lines.append("🏆 Top BSC LP:")
+            lines.append("💎 Top BSC LP:")
             for pool in bsc_pools[:5]:
                 lines.append(f"  {pool['symbol']}: {pool['risk_adj_apy']:.1f}%")
         
@@ -614,10 +614,10 @@ def format_unified_report(
     
     # AI Summary
     if ai_summary:
-        lines.append("💡 Рекомендация эксперта:")
+        lines.append("🎯 Рекомендация эксперта:")
         lines.append(ai_summary)
     else:
-        lines.append("💡 Рекомендация эксперта: (нет ключа OpenAI)")
+        lines.append("🎯 Рекомендация эксперта: (нет ключа OpenAI)")
     
     return "\n".join(lines)
 
