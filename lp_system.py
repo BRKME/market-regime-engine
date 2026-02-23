@@ -199,6 +199,7 @@ def run_opportunities() -> Optional[dict]:
     """Run LP Opportunities Scanner and return top pools"""
     try:
         from lp_opportunities import LPOpportunitiesScanner
+        from lp_config import REGIME_IL_PENALTY
         
         scanner = LPOpportunitiesScanner()
         opportunities = scanner.scan()
@@ -210,17 +211,38 @@ def run_opportunities() -> Optional[dict]:
         scanner.save_state()
         rankings = scanner.get_rankings()
         
+        # LP recommendation based on regime
+        regime = scanner.regime
+        regime_penalty = REGIME_IL_PENALTY.get(regime, 0.4)
+        
+        lp_recommendations = {
+            "HARVEST": "Ideal for LP. Use tight ranges.",
+            "RANGE": "Good for LP. Standard ranges work.",
+            "MEAN_REVERT": "Moderate. Watch range edges.",
+            "VOLATILE_CHOP": "Use wide ranges.",
+            "TRANSITION": "Caution advised.",
+            "BULL": "IL risk on short positions.",
+            "BEAR": "High IL risk. Prefer stable pairs.",
+            "TRENDING": "Minimize LP exposure.",
+            "BREAKOUT": "Possible strong IL.",
+            "CHURN": "Exit risky positions.",
+            "AVOID": "Avoid LP. High risk.",
+        }
+        
         return {
-            "regime": scanner.regime,
+            "regime": regime,
+            "regime_penalty": regime_penalty,
+            "lp_recommendation": lp_recommendations.get(regime, "Unknown regime."),
             "top_pools": [
                 {
                     "symbol": o.symbol,
+                    "chain": o.chain,
                     "apy": o.apy_total,
                     "risk_adj_apy": o.risk_adjusted_apy,
                     "tvl": o.tvl_usd,
                     "il_risk": o.il_risk_label,
                 }
-                for o in rankings["by_risk_adjusted"][:5]
+                for o in rankings["by_risk_adjusted"][:10]  # Top 10 instead of 5
             ]
         }
         
@@ -229,18 +251,88 @@ def run_opportunities() -> Optional[dict]:
         return None
 
 
-def run_advisor(monitor_data: dict, opportunities_data: dict) -> Optional[str]:
+def run_advisor(monitor_data: dict, opportunities_data: Optional[dict]) -> Optional[str]:
     """Run LP Advisor and return AI summary"""
+    
+    # Check for OpenAI key first
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        logger.warning("OPENAI_API_KEY not set - skipping AI summary")
+        return None
+    
     try:
-        from lp_advisor import LPAdvisor
+        # Build context for AI
+        tvl = monitor_data.get("tvl", 0)
+        fees = monitor_data.get("fees", 0)
+        count = monitor_data.get("count", 0)
+        in_range = monitor_data.get("in_range", 0)
+        out_range = count - in_range
         
-        advisor = LPAdvisor()
-        advisor.analyze()
-        report = advisor.generate_report()
-        advisor.save_report()
+        positions = monitor_data.get("positions", [])
         
-        return report.ai_summary
+        # Position details
+        position_details = []
+        for p in positions[:10]:  # Limit to 10
+            symbol = f"{p.get('token0_symbol', '')}-{p.get('token1_symbol', '')}"
+            balance = p.get("balance_usd", 0)
+            status = "in-range" if p.get("in_range", False) else "OUT OF RANGE"
+            position_details.append(f"{symbol}: ${balance:.0f} ({status})")
         
+        # Regime info
+        regime = opportunities_data.get("regime", "UNKNOWN") if opportunities_data else "UNKNOWN"
+        regime_penalty = opportunities_data.get("regime_penalty", 0.4) if opportunities_data else 0.4
+        
+        # Top pools
+        top_pools = []
+        if opportunities_data and opportunities_data.get("top_pools"):
+            for p in opportunities_data["top_pools"][:3]:
+                top_pools.append(f"{p['symbol']}: {p['risk_adj_apy']:.1f}%")
+        
+        prompt = f"""LP Portfolio Analysis:
+
+Regime: {regime} (IL penalty: {regime_penalty:.0%})
+TVL: ${tvl:,.0f}
+Fees uncollected: ${fees:.2f}
+Positions: {count} total, {in_range} in-range, {out_range} out-of-range
+
+Positions:
+{chr(10).join(position_details)}
+
+Top market opportunities:
+{chr(10).join(top_pools) if top_pools else "N/A"}
+
+Give brief assessment (2-3 sentences) and 1-2 specific actions. Russian language."""
+
+        # Call OpenAI
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {openai_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a DeFi LP advisor. Be concise and actionable. Russian language. Max 300 chars."
+                },
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 200,
+            "temperature": 0.7
+        }
+        
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            ai_text = data["choices"][0]["message"]["content"]
+            logger.info(f"AI response: {ai_text[:100]}...")
+            return ai_text
+        else:
+            logger.error(f"OpenAI error: {response.status_code} - {response.text[:200]}")
+            return None
+            
     except Exception as e:
         logger.error(f"Advisor error: {e}")
         return None
@@ -293,7 +385,6 @@ def format_unified_report(
     # Positions by wallet
     lines.append("")
     
-    by_wallet = monitor_data.get("by_wallet", {})
     positions = monitor_data.get("positions", [])
     
     # Group positions by wallet
@@ -310,7 +401,8 @@ def format_unified_report(
         lines.append(f"{wallet_name}: ${w_total:,.0f} (fees: ${w_fees:.2f})")
         
         for p in w_positions:
-            status = "+" if p.get("in_range", False) else "-"
+            # Emoji for in-range status
+            status = "🟢" if p.get("in_range", False) else "🔴"
             symbol = f"{p.get('token0_symbol', '')}-{p.get('token1_symbol', '')}"
             balance = p.get("balance_usd", 0)
             lines.append(f"  {status} {symbol} ${balance:,.0f}")
@@ -323,22 +415,42 @@ def format_unified_report(
         
         lines.append("")
     
-    # Top opportunities
+    # Top opportunities - expanded to 10, split by chain
     if opportunities_data and opportunities_data.get("top_pools"):
-        lines.append("Top pools:")
-        for pool in opportunities_data["top_pools"][:3]:
-            lines.append(f"  {pool['symbol']}: {pool['risk_adj_apy']:.1f}% adj")
+        arb_pools = [p for p in opportunities_data["top_pools"] if p.get("chain", "").lower() == "arbitrum"]
+        bsc_pools = [p for p in opportunities_data["top_pools"] if p.get("chain", "").lower() == "bsc"]
+        
+        if arb_pools:
+            lines.append("Top ARB:")
+            for pool in arb_pools[:5]:
+                lines.append(f"  {pool['symbol']}: {pool['risk_adj_apy']:.1f}%")
+        
+        if bsc_pools:
+            lines.append("Top BSC:")
+            for pool in bsc_pools[:5]:
+                lines.append(f"  {pool['symbol']}: {pool['risk_adj_apy']:.1f}%")
+        
         lines.append("")
     
-    # Regime
+    # Regime with LP policy details
     if opportunities_data:
-        lines.append(f"Regime: {opportunities_data.get('regime', 'UNKNOWN')}")
+        regime = opportunities_data.get("regime", "UNKNOWN")
+        regime_penalty = opportunities_data.get("regime_penalty", 0)
+        lp_recommendation = opportunities_data.get("lp_recommendation", "")
+        
+        lines.append(f"Regime: {regime}")
+        if regime_penalty:
+            lines.append(f"  IL Penalty: {regime_penalty:.0%}")
+        if lp_recommendation:
+            lines.append(f"  {lp_recommendation}")
+        lines.append("")
     
     # AI Summary
     if ai_summary:
-        lines.append("")
         lines.append("AI:")
         lines.append(ai_summary)
+    else:
+        lines.append("AI: (no OpenAI key or error)")
     
     return "\n".join(lines)
 
@@ -418,10 +530,16 @@ def main():
     # Stage 3: Advisor
     logger.info("\n--- STAGE 3: ADVISOR ---")
     ai_summary = None
-    if monitor_data and opportunities_data:
+    
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        logger.warning("OPENAI_API_KEY not set - AI summary disabled")
+    elif monitor_data:
         ai_summary = run_advisor(monitor_data, opportunities_data)
         if ai_summary:
             logger.info(f"AI summary: {ai_summary[:100]}...")
+        else:
+            logger.warning("AI summary failed")
     
     # Generate unified report
     logger.info("\n--- GENERATING REPORT ---")

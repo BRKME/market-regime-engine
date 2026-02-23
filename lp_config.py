@@ -289,21 +289,32 @@ MIN_APY = 1.0                   # 1% minimum APY
 STABLECOINS = {
     "USDC", "USDT", "DAI", "BUSD", "FRAX", "TUSD", "USDP", "GUSD",
     "USDC.E", "USDT.E", "USDC.e", "USDT.e",
-    "USDC-CIRCLE", "USDCE", "USDT-TETHER",
+    "USDC-CIRCLE", "USDCE", "USDT-TETHER", "FDUSD",
 }
 
 MAJOR_TOKENS = {
     # Native / Wrapped
     "WETH", "ETH", "WBTC", "BTC", "BTCB",
     "WBNB", "BNB",
-    # L2 tokens
-    "ARB", "OP", "MATIC", "BASE",
+    # L2 / Layer 1
+    "ARB", "OP", "MATIC", "BASE", "SOL", "AVAX",
     # Blue chips DeFi
     "LINK", "UNI", "AAVE", "MKR", "SNX", "CRV", "LDO",
-    "GMX", "PENDLE", "RDNT", "GNS",
+    "GMX", "PENDLE", "RDNT", "GNS", "CAKE",
     # LST/LRT
     "WSTETH", "STETH", "RETH", "CBETH", "FRXETH", "SFRXETH",
     "WEETH", "EZETH", "RSETH",
+    # Privacy / Store of value
+    "ZEC", "XMR",
+    # Gaming / Metaverse (quality only)
+    "IMX", "SAND", "MANA",
+    # Infrastructure
+    "GRT", "FIL", "AR",
+    # DeFi BSC
+    "XVS", "ALPACA", "BIFI",
+    # New quality tokens
+    "ZRO", "ASTER", "JUP", "PYTH", "W", "ENA",
+    "EIGEN", "ETHFI",
 }
 
 # Combined whitelist (stables + majors)
