@@ -48,34 +48,40 @@ Stability:    -1.0
 def calculate_hedge_score(metrics):
     """
     Hedge Score = [0, 1], где 1 = максимальная необходимость хеджа
+    
+    ВАЖНО: Используем ТОЛЬКО Dir как главный сигнал.
+    Dir уже агрегирует P(BEAR), Momentum и другие факторы.
+    Добавление их отдельно = двойной счёт.
+    
+    TailRisk — бинарный override для экстремальных ситуаций.
     """
     
-    # Компоненты
-    dir_component = max(0, -metrics['dir'])  # [0,1], выше при negative dir
-    tail_component = 1.0 if metrics['tail_risk_active'] else 0.0
-    bear_component = metrics['p_bear']  # [0,1]
-    momentum_component = max(0, -metrics['momentum'])  # [0,1]
+    dir_value = metrics['dir']  # [-1, +1]
+    tail_active = metrics['tail_risk_active']
+    tail_polarity = metrics['tail_polarity']
     
-    # Веса
-    W_DIR = 0.35
-    W_TAIL = 0.25
-    W_BEAR = 0.25
-    W_MOMENTUM = 0.15
+    # Базовый score из Dir (только downside)
+    base_score = max(0, -dir_value)  # [0, 1]
     
-    hedge_score = (
-        W_DIR * dir_component +
-        W_TAIL * tail_component +
-        W_BEAR * bear_component +
-        W_MOMENTUM * momentum_component
-    )
+    # TailRisk override — минимум 0.7 при активном downside tail
+    if tail_active and tail_polarity == 'downside':
+        hedge_score = max(0.7, base_score)
+    else:
+        hedge_score = base_score
     
-    return min(1.0, hedge_score)
+    return hedge_score
 ```
+
+**Почему так:**
+- Dir = -0.86 уже означает сильный downside risk
+- P(BEAR) = 57% коррелирует с Dir (не независимый фактор)
+- Momentum = -0.62 тоже коррелирует с Dir
+- Складывать их = считать один сигнал 3 раза
 
 ### 2.2 Hedge Ratio (размер хеджа)
 
 ```python
-def calculate_hedge_ratio(hedge_score, confidence, vol_z):
+def calculate_hedge_ratio(hedge_score, confidence, tail_risk_active, vol_z):
     """
     Hedge Ratio = доля volatile exposure для хеджирования
     """
@@ -84,13 +90,17 @@ def calculate_hedge_ratio(hedge_score, confidence, vol_z):
     base_ratio = hedge_score  # [0, 1]
     
     # Корректировка на confidence
-    # Низкая confidence = неуверенность в сигнале = меньше хеджа
-    confidence_adj = 0.5 + 0.5 * confidence  # [0.5, 1.0]
+    # ВАЖНО: При TailRisk НЕ снижаем из-за низкой confidence
+    # Низкая confidence + TailRisk = неопределённость, но риск реален
+    if tail_risk_active:
+        confidence_adj = 1.0  # Не снижаем
+    else:
+        confidence_adj = 0.7 + 0.3 * confidence  # [0.7, 1.0]
     
-    # Корректировка на волатильность
-    # Высокая vol_z = дорогие премии = меньше хеджа
+    # Корректировка на волатильность (прокси IV)
+    # Высокая vol_z = дорогие премии
     if vol_z > 1.5:
-        vol_adj = 0.7  # Снижаем из-за дорогих премий
+        vol_adj = 0.7
     elif vol_z > 1.0:
         vol_adj = 0.85
     else:
@@ -101,54 +111,159 @@ def calculate_hedge_ratio(hedge_score, confidence, vol_z):
     return min(0.75, max(0.0, hedge_ratio))  # Cap at 75%
 ```
 
+**Исправлен Confidence парадокс:**
+- Раньше: низкая confidence → меньше хеджа (даже при TailRisk!)
+- Теперь: при TailRisk confidence_adj = 1.0 (не режем защиту)
+
 ### 2.3 Premium Budget
 
 ```python
-def calculate_premium_budget(expected_fees_14d, hedge_score):
+def calculate_premium_budget(tvl, volatile_exposure, hedge_ratio):
     """
-    Максимальный бюджет на премии
+    Бюджет на премии привязан к TVL, не к fees.
+    
+    Fees — переменная величина, падает в BEAR.
+    Привязка к fees = проциклично снижаем защиту.
     """
     
-    # Базовый бюджет = 50% ожидаемых fees
-    base_budget = expected_fees_14d * 0.5
+    # Целевая стоимость защиты: 0.5% от хеджируемой суммы за 14 дней
+    # ≈ 1.3% годовых — разумная "страховка"
+    hedge_notional = volatile_exposure * hedge_ratio
+    max_premium = hedge_notional * 0.005  # 0.5%
     
-    # При высоком hedge_score готовы платить больше
-    if hedge_score > 0.8:
-        budget_multiplier = 1.5  # До 75% fees
-    elif hedge_score > 0.6:
-        budget_multiplier = 1.2  # До 60% fees
-    else:
-        budget_multiplier = 1.0  # 50% fees
+    # Абсолютный cap: не более 1% от TVL за 14 дней
+    absolute_cap = tvl * 0.01
     
-    return base_budget * budget_multiplier
+    return min(max_premium, absolute_cap)
+```
+
+**Почему не от fees:**
+- Fees в BEAR падают → бюджет падает → меньше защиты
+- Это проциклично и опасно
+- TVL стабильнее как база
+
+---
+
+## 3. Типы пар и стратегии хеджирования
+
+### Проблема: IL зависит от типа пары
+
+PUT ETH хеджирует падение ETH. Но IL — функция **относительного** движения пары.
+
+| Тип пары | Пример | IL возникает когда | Хедж инструмент |
+|----------|--------|-------------------|-----------------|
+| Volatile/Stable | ETH-USDC | ETH движется | PUT ETH ✅ |
+| Volatile/Stable | BTC-USDT | BTC движется | PUT BTC ✅ |
+| Volatile/Volatile | ETH-BTC | ETH/BTC ratio меняется | Сложно ⚠️ |
+| Alt/Volatile | ZRO-ETH | ZRO/ETH ratio меняется | Нет инструментов ❌ |
+| Stable/Volatile | USDT-BNB | BNB движется | PUT BNB (если есть) |
+
+### Классификация позиций
+
+```python
+def classify_position_for_hedge(token0, token1):
+    """
+    Определяем можно ли и как хеджировать позицию
+    """
+    
+    STABLES = {'USDC', 'USDT', 'DAI', 'BUSD', 'FDUSD'}
+    HEDGEABLE = {'ETH', 'WETH', 'BTC', 'WBTC', 'BTCB'}  # Есть опционы на DEX
+    
+    t0_stable = token0 in STABLES
+    t1_stable = token1 in STABLES
+    t0_hedgeable = token0 in HEDGEABLE
+    t1_hedgeable = token1 in HEDGEABLE
+    
+    # Volatile/Stable — идеальный случай
+    if t0_stable and t1_hedgeable:
+        return {'hedgeable': True, 'underlying': token1, 'type': 'PUT'}
+    if t1_stable and t0_hedgeable:
+        return {'hedgeable': True, 'underlying': token0, 'type': 'PUT'}
+    
+    # Volatile/Volatile (ETH-BTC) — сложный случай
+    if t0_hedgeable and t1_hedgeable:
+        return {
+            'hedgeable': 'partial',
+            'underlying': 'both',
+            'type': 'RATIO',
+            'note': 'PUT на один актив не компенсирует IL полностью'
+        }
+    
+    # Alt/Volatile или Alt/Alt — не хеджируем
+    return {'hedgeable': False, 'reason': 'Нет ликвидных опционов'}
+```
+
+### Рекомендации по типам пар
+
+**✅ Полностью хеджируемые (Volatile/Stable):**
+- WETH-USDC → PUT ETH
+- WBTC-USDT → PUT BTC
+- WBNB-USDT → PUT BNB (если доступен)
+
+**⚠️ Частично хеджируемые (Volatile/Volatile):**
+- WBTC-WETH → Можно PUT ETH, но:
+  - Если ETH падает сильнее BTC → хедж работает
+  - Если BTC падает сильнее ETH → хедж не помогает
+  - Опционально: PUT ETH + PUT BTC (дорого)
+
+**❌ Не хеджируемые (с Alt токенами):**
+- ZRO-WETH, PENDLE-WETH, ASTER-USDT
+- Нет ликвидных опционов на alt токены
+- Риск принимается как есть
+
+### Текущий портфель по типам
+
+```
+Полностью хеджируемые:     $0 (0%)
+  (нет чистых ETH/USDC, BTC/USDT)
+
+Частично хеджируемые:      $11,072 (37%)
+  WBTC-WETH: $11,072
+
+С BNB (если есть опционы): $5,902 (19%)
+  USDT-WBNB: $5,902
+
+Не хеджируемые:            $13,302 (44%)
+  ASTER-USDT: $7,440
+  ZRO-WETH: $1,608
+  ZEC-USDT: $1,349
+  ZEC-WBNB: $1,108
+  PENDLE-WETH: $1,754
 ```
 
 ---
 
-## 3. Пороговые значения (Thresholds)
+## 4. Пороговые значения (Thresholds)
 
 ### Триггеры для хеджирования
 
 | Условие | Порог | Действие |
 |---------|-------|----------|
-| Dir < -0.7 | **Критический** | Хедж обязателен |
-| TailRisk = True AND polarity = downside | **Критический** | Хедж обязателен |
-| Hedge Score > 0.6 | **Высокий** | Рекомендуется хедж |
-| Hedge Score 0.3-0.6 | **Умеренный** | Рассмотреть хедж |
-| Hedge Score < 0.3 | **Низкий** | Не хеджировать |
+| TailRisk Active + Downside | **Override** | Hedge Score ≥ 0.7 автоматически |
+| Dir < -0.7 | **Высокий** | Hedge Score ≥ 0.7 |
+| Dir -0.4 до -0.7 | **Умеренный** | Hedge Score 0.4-0.7, рассмотреть |
+| Dir > -0.4 | **Низкий** | Hedge Score < 0.4, не хеджировать |
 
-### Корректировки
+### Решение по Hedge Score
 
-| Условие | Корректировка |
-|---------|---------------|
-| Vol_z > 1.5 | Hedge ratio × 0.7 (дорогие премии) |
-| Confidence < 0.3 | Hedge ratio × 0.8 (неуверенный сигнал) |
-| Uncertainty > 0.7 | Premium budget × 1.2 (больше защиты) |
-| P(BEAR) > 0.7 | Hedge ratio × 1.15 (высокая вероятность) |
+| Hedge Score | Действие |
+|-------------|----------|
+| ≥ 0.6 | Хедж рекомендуется |
+| 0.4 - 0.6 | Рассмотреть хедж |
+| < 0.4 | Не хеджировать |
+
+### Vol_z корректировки (прокси IV)
+
+| Vol_z | IV Percentile | Корректировка |
+|-------|---------------|---------------|
+| < 0.5 | LOW | vol_adj = 1.0 (дешёвые премии) |
+| 0.5 - 1.0 | NORMAL | vol_adj = 1.0 |
+| 1.0 - 1.5 | ELEVATED | vol_adj = 0.85 |
+| > 1.5 | HIGH | vol_adj = 0.7 (дорогие премии) |
 
 ---
 
-## 4. Расчёт экспозиции портфеля
+## 5. Расчёт экспозиции портфеля
 
 ### 4.1 Общий TVL
 
@@ -195,7 +310,7 @@ volatile_exposure = exposure['ETH'] + exposure['BTC'] + exposure['BNB']
 
 ---
 
-## 5. Delta LP позиций
+## 6. Delta LP позиций
 
 ### Проблема
 
@@ -241,7 +356,7 @@ def calculate_hedge_notional(position, hedge_ratio, delta):
 
 ---
 
-## 6. Оценка премий и Break-Even
+## 7. Оценка премий и Break-Even
 
 ### 6.1 IV Percentile
 
@@ -310,111 +425,139 @@ def evaluate_hedge_efficiency(expected_move, strike_distance, premium, il_estima
 
 ---
 
-## 7. Алгоритм принятия решения
+## 8. Алгоритм принятия решения
 
 ```python
-def hedge_decision(regime_data, positions, options_data):
+def hedge_decision(regime_data, positions):
     """
     Главный алгоритм принятия решения о хедже
     """
     
-    # 1. Извлекаем метрики
-    dir = regime_data['risk']['risk_level']
+    # 1. Извлекаем метрики из Regime Engine
+    dir_value = regime_data['risk']['risk_level']
     tail_active = regime_data['asset_allocation']['meta']['tail_risk_active']
-    tail_polarity = regime_data['asset_allocation']['meta']['tail_polarity']
+    tail_polarity = regime_data['asset_allocation']['meta'].get('tail_polarity', '')
     confidence = regime_data['confidence']['quality_adjusted']
     vol_z = regime_data['metadata']['vol_z']
-    p_bear = regime_data['probabilities']['BEAR']
-    momentum = regime_data['buckets']['Momentum']
-    hedge_flag = regime_data['lp_policy']['hedge_recommended']
     
-    # 2. Рассчитываем Hedge Score
-    hedge_score = calculate_hedge_score({
-        'dir': dir,
-        'tail_risk_active': tail_active and tail_polarity == 'downside',
-        'p_bear': p_bear,
-        'momentum': momentum
-    })
+    # 2. Рассчитываем Hedge Score (упрощённая формула)
+    base_score = max(0, -dir_value)
     
-    # 3. Определяем необходимость хеджа
-    if hedge_score < 0.3 and not hedge_flag:
+    if tail_active and tail_polarity == 'downside':
+        hedge_score = max(0.7, base_score)
+    else:
+        hedge_score = base_score
+    
+    # 3. Классифицируем позиции по типам
+    hedgeable_exposure = {'ETH': 0, 'BTC': 0, 'BNB': 0}
+    non_hedgeable = 0
+    
+    for pos in positions:
+        classification = classify_position_for_hedge(pos.token0, pos.token1)
+        
+        if classification['hedgeable'] == True:
+            underlying = classification['underlying']
+            hedgeable_exposure[underlying] += pos.balance_usd * 0.5
+        elif classification['hedgeable'] == 'partial':
+            # Volatile/Volatile — добавляем к обоим с коэффициентом
+            hedgeable_exposure['ETH'] += pos.balance_usd * 0.25
+            hedgeable_exposure['BTC'] += pos.balance_usd * 0.25
+        else:
+            non_hedgeable += pos.balance_usd
+    
+    total_hedgeable = sum(hedgeable_exposure.values())
+    
+    # 4. Проверяем минимальный порог
+    if total_hedgeable < 5000:
+        return {
+            'action': 'NO_HEDGE',
+            'reason': f'Hedgeable exposure < $5,000 (${total_hedgeable:.0f})',
+            'hedge_score': hedge_score
+        }
+    
+    # 5. Проверяем hedge_score
+    if hedge_score < 0.4:
         return {
             'action': 'NO_HEDGE',
             'reason': f'Hedge Score низкий ({hedge_score:.2f})',
             'hedge_score': hedge_score
         }
     
-    # 4. Рассчитываем параметры хеджа
-    hedge_ratio = calculate_hedge_ratio(hedge_score, confidence, vol_z)
+    # 6. Рассчитываем hedge_ratio
+    if tail_active:
+        confidence_adj = 1.0
+    else:
+        confidence_adj = 0.7 + 0.3 * confidence
     
-    # 5. Рассчитываем экспозицию
-    exposure = calculate_exposure(positions)
-    volatile = exposure['ETH'] + exposure['BTC'] + exposure['BNB']
+    if vol_z > 1.5:
+        vol_adj = 0.7
+    elif vol_z > 1.0:
+        vol_adj = 0.85
+    else:
+        vol_adj = 1.0
     
-    # 6. Проверяем минимальный порог
-    if volatile < 5000:
-        return {
-            'action': 'NO_HEDGE',
-            'reason': f'Volatile exposure < $5,000 (${volatile:.0f})',
-            'hedge_score': hedge_score
-        }
+    hedge_ratio = min(0.75, hedge_score * confidence_adj * vol_adj)
     
     # 7. Рассчитываем notional для каждого актива
     hedge_notional = {
-        'ETH': exposure['ETH'] * hedge_ratio,
-        'BTC': exposure['BTC'] * hedge_ratio,
-        'BNB': exposure['BNB'] * hedge_ratio if has_bnb_options() else 0
+        asset: exposure * hedge_ratio 
+        for asset, exposure in hedgeable_exposure.items()
+        if exposure > 0
     }
     
-    # 8. Оцениваем премии
-    iv_percentile = evaluate_iv_percentile(vol_z)
+    # 8. Рассчитываем premium budget (0.5% от hedge notional)
+    total_notional = sum(hedge_notional.values())
+    max_premium = total_notional * 0.005
     
-    if iv_percentile == 'HIGH' and hedge_score < 0.7:
+    # 9. Проверяем IV (vol_z как прокси)
+    if vol_z > 1.5 and hedge_score < 0.6:
         return {
             'action': 'WAIT',
-            'reason': 'IV высокая, hedge_score недостаточен для оправдания премий',
+            'reason': 'IV высокая, hedge_score недостаточен',
             'hedge_score': hedge_score,
-            'iv_percentile': iv_percentile
+            'vol_z': vol_z
         }
     
-    # 9. Формируем рекомендацию
+    # 10. Формируем рекомендацию
     return {
         'action': 'HEDGE',
         'hedge_score': hedge_score,
         'hedge_ratio': hedge_ratio,
-        'iv_percentile': iv_percentile,
+        'hedgeable_exposure': hedgeable_exposure,
+        'non_hedgeable': non_hedgeable,
         'notional': hedge_notional,
-        'exposure': exposure,
-        'recommendations': generate_option_recommendations(hedge_notional, options_data)
+        'max_premium': max_premium,
+        'vol_z': vol_z,
+        'tail_risk': tail_active
     }
 ```
 
 ---
 
-## 8. Формат рекомендации в отчёте
+## 9. Формат рекомендации в отчёте
 
-### Когда хедж НЕ нужен
+### Когда хедж НЕ нужен (Score < 0.4)
 
 ```
 🛡️ Хеджирование:
 Статус: Не требуется
-Hedge Score: 0.25
-Причина: Dir нейтральный (+0.15), TailRisk неактивен
+Dir: +0.15 | TailRisk: нет
+Hedge Score: 0.15
 
-Экспозиция: ETH $8K, BTC $5.5K, BNB $3K
+Экспозиция:
+  Хеджируемая: ETH $5.5K, BTC $5.5K
+  Не хеджируемая: $13.3K (alt пары)
 ```
 
-### Когда нужен, но дорого
+### Когда ждём (высокая IV)
 
 ```
 🛡️ Хеджирование:
 Статус: Ожидание
-Hedge Score: 0.55
-IV Percentile: HIGH (vol_z=1.8)
-Причина: Премии дорогие, ждём снижения IV
+Dir: -0.55 | Hedge Score: 0.55
+Vol_z: 1.8 (HIGH) — премии дорогие
 
-Экспозиция: ETH $8K, BTC $5.5K
-Target: При vol_z < 1.0 рассмотреть хедж
+Рекомендация: ждём vol_z < 1.0
 ```
 
 ### Когда рекомендуется
@@ -422,34 +565,37 @@ Target: При vol_z < 1.0 рассмотреть хедж
 ```
 🛡️ Хеджирование:
 Статус: Рекомендуется
-Hedge Score: 0.72
-Dir: -0.86 | TailRisk: Active (downside)
-Hedge Ratio: 45%
+Dir: -0.86 | TailRisk: Active ⚠️
+Hedge Score: 0.86
+Hedge Ratio: 60%
 
-Экспозиция:
-  ETH: $8,000 (хедж $3,600)
-  BTC: $5,500 (хедж $2,475)
+Хеджируемая экспозиция:
+  ETH: $5,536 → хедж $3,322
+  BTC: $5,536 → хедж $3,322
+  
+Не хеджируемая: $13,302 (alt пары)
 
 Предложение #1 (ETH):
   PUT ETH $2,250 (-10%)
   Срок: 14d
-  Notional: $3,600
-  Премия: ~$50-70 (1.5%)
-  Break-even: -11.5%
+  Notional: $3,322
+  Max премия: $17 (0.5%)
   Площадка: Aevo
 
 Предложение #2 (BTC):
   PUT BTC $76,500 (-10%)
   Срок: 14d
-  Notional: $2,475
-  Премия: ~$35-50 (1.5%)
-  Break-even: -11.5%
+  Notional: $3,322
+  Max премия: $17 (0.5%)
   Площадка: Aevo
+
+⚠️ WBTC-WETH ($11K): частичный хедж — 
+PUT на один актив не компенсирует IL полностью
 ```
 
 ---
 
-## 9. Площадка: Aevo
+## 10. Площадка: Aevo
 
 ### Почему Aevo
 
@@ -474,7 +620,7 @@ GET /options/{underlying}/iv?expiry={expiry}
 
 ---
 
-## 10. Метрики эффективности
+## 11. Метрики эффективности
 
 ### Post-hoc анализ
 
@@ -500,27 +646,43 @@ GET /options/{underlying}/iv?expiry={expiry}
 |--------|------|-----------|
 | 1.0 | 2025-02-23 | Первая версия (интуитивная) |
 | 1.1 | 2025-02-23 | Добавлен учёт фазы цикла, DEX only |
-| 2.0 | 2025-02-23 | Полностью количественная модель, интеграция с Regime Engine |
+| 2.0 | 2025-02-23 | Количественная модель, интеграция с Regime Engine |
+| 2.1 | 2025-02-23 | Исправления по аудиту: убран двойной счёт, классификация пар |
 
 ---
 
-## Изменения v1.1 → v2.0
+## Изменения v2.0 → v2.1 (по аудиту)
 
-| Было (v1.1) | Стало (v2.0) |
-|-------------|--------------|
-| "Фаза цикла" как триггер | Hedge Score на основе Dir, TailRisk, P(BEAR) |
-| Hedge ratio по TVL | Hedge ratio = f(score, confidence, vol_z) |
-| IV высокая/низкая | IV percentile через vol_z |
-| Нет delta расчёта | Упрощённая delta модель для V3 |
-| Нет break-even | Break-even = strike + premium |
-| Отдельная система | Интеграция с Regime Engine |
+| Проблема | Было | Стало |
+|----------|------|-------|
+| Двойной счёт | Score = Dir + P(BEAR) + Momentum | Score = Dir only (+ TailRisk override) |
+| Confidence парадокс | Низкая conf → меньше хеджа всегда | При TailRisk conf_adj = 1.0 |
+| Типы пар | Все пары одинаково | Volatile/Stable, Volatile/Volatile, Alt |
+| Premium budget | От fees (проциклично) | От TVL (0.5% от notional) |
+| Exposure расчёт | Все активы суммарно | По типам пар |
+
+---
+
+## Ограничения модели (честно)
+
+| Аспект | Статус |
+|--------|--------|
+| Архитектура | ✅ Есть |
+| Интеграция с Regime | ✅ Есть |
+| Классификация пар | ✅ Есть |
+| Калибровка весов | ❌ Нет (нужен бэктест) |
+| Monte Carlo | ❌ Нет |
+| CVaR оптимизация | ❌ Нет |
+| Delta V3 точная | ❌ Упрощённая |
+
+**Это продвинутая эвристика, не full quant модель.
+Для $30K портфеля — достаточно.**
 
 ---
 
 ## TODO
 
 1. [ ] Реализовать `lp_hedge_engine.py`
-2. [ ] Интегрировать Aevo API для получения цен и IV
-3. [ ] Добавить блок 🛡️ Хеджирование в `lp_system.py`
-4. [ ] Тестирование на исторических данных
-5. [ ] Калибровка весов в Hedge Score формуле
+2. [ ] Интегрировать Aevo API для получения цен
+3. [ ] Добавить блок 🛡️ в `lp_system.py`
+4. [ ] Тестирование на реальных данных
