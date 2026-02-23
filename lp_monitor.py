@@ -681,24 +681,34 @@ class LPMonitor:
         lines.append(f"📍 In Range: {summary.positions_in_range}/{summary.total_positions} ({in_range_pct:.0f}%)")
         lines.append("")
         
-        # By wallet
-        lines.append("📁 По кошелькам:")
-        for wallet_name, data in sorted(summary.by_wallet.items()):
-            lines.append(f"  {wallet_name}: ${data['balance_usd']:,.0f} (fees: ${data['fees_usd']:.2f})")
-        lines.append("")
-        
-        # Positions
+        # Positions grouped by wallet
         lines.append("📋 Позиции:")
-        for p in sorted(self.positions, key=lambda x: x.balance_usd, reverse=True):
-            status = "🟢" if p.in_range else "🔴"
-            chain_emoji = "🔷" if p.chain == "arbitrum" else "🟡"
-            lines.append(f"{status}{chain_emoji} {p.wallet_name} | {p.token0_symbol}-{p.token1_symbol} ({p.fee_tier}%)")
-            lines.append(f"   ${p.balance_usd:,.0f} | fees: ${p.uncollected_fees_usd:.2f}")
-            if not p.in_range:
-                if p.current_tick < p.tick_lower:
-                    lines.append(f"   ⬇️ Below range by {abs(p.distance_to_lower_pct):.1f}%")
-                else:
-                    lines.append(f"   ⬆️ Above range by {abs(p.distance_to_upper_pct):.1f}%")
+        
+        # Group positions by wallet
+        from collections import defaultdict
+        by_wallet = defaultdict(list)
+        for p in self.positions:
+            by_wallet[p.wallet_name].append(p)
+        
+        # Sort wallets by name, positions within wallet by balance
+        for wallet_name in sorted(by_wallet.keys()):
+            wallet_positions = sorted(by_wallet[wallet_name], key=lambda x: x.balance_usd, reverse=True)
+            wallet_total = sum(p.balance_usd for p in wallet_positions)
+            wallet_fees = sum(p.uncollected_fees_usd for p in wallet_positions)
+            
+            lines.append(f"")
+            lines.append(f"👛 {wallet_name}: ${wallet_total:,.0f} (fees: ${wallet_fees:.2f})")
+            
+            for p in wallet_positions:
+                status = "🟢" if p.in_range else "🔴"
+                chain_emoji = "🔷" if p.chain == "arbitrum" else "🟡"
+                lines.append(f"  {status}{chain_emoji} {p.token0_symbol}-{p.token1_symbol} ({p.fee_tier}%)")
+                lines.append(f"      ${p.balance_usd:,.0f} | fees: ${p.uncollected_fees_usd:.2f}")
+                if not p.in_range:
+                    if p.current_tick < p.tick_lower:
+                        lines.append(f"      ⬇️ Below range by {abs(p.distance_to_lower_pct):.1f}%")
+                    else:
+                        lines.append(f"      ⬆️ Above range by {abs(p.distance_to_upper_pct):.1f}%")
         
         return "\n".join(lines)
 

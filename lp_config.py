@@ -13,11 +13,11 @@ import os
 # ═══════════════════════════════════════════════════════════════════════════════
 
 WALLETS = {
-    "0x17e6d71d30d260e30bb7721c63539694ab02b036": "1F_MMW",
-    "0x91dad140af2800b2d660e530b9f42500eee474a0": "2F_MMS",
-    "0x4e7240952c21c811d9e1237a328b927685a21418": "3F_BNB",
-    "0x3c2c34b9bb0b00145142ffee68475e1ac01c92ba": "4F_Exodus",
-    "0x5a51f62d86f5ccb8c7470cea2ac982762049c53c": "5F_BNB",
+    "0x17e6d71d30d260e30bb7721c63539694ab02b036": "MMA_1",
+    "0x91dad140af2800b2d660e530b9f42500eee474a0": "MMA_2",
+    "0x3c2c34b9bb0b00145142ffee68475e1ac01c92ba": "MMA_3",
+    "0x4e7240952c21c811d9e1237a328b927685a21418": "MMA_4",
+    "0x5a51f62d86f5ccb8c7470cea2ac982762049c53c": "MMA_5",
 }
 
 WALLET_ADDRESSES = list(WALLETS.keys())
@@ -52,9 +52,10 @@ CHAINS = {
             "https://bsc-dataseed2.binance.org",
             "https://rpc.ankr.com/bsc",
         ],
-        "position_manager": "0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613",  # PancakeSwap V3
-        "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
-        "quoter": "0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997",
+        # Uniswap V3 официальные контракты на BSC
+        "position_manager": "0x7b8A01B39D58278b5DE7e48c8449c9f4F5170613",
+        "factory": "0xdB1d10011AD0Ff90774D0C6Bb92e5C5c8b4461F7",
+        "quoter": "0x78D78E420Da98ad378D7799bE8f4AF69033EB077",
         "platform": "binance-smart-chain",  # CoinGecko platform ID
         "explorer": "https://bscscan.com",
         "native_token": "BNB",

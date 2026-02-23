@@ -493,16 +493,28 @@ class LPAdvisor:
         lines.append(f"  🟢 {report.positions_healthy} | ⚠️ {report.positions_warning} | 🚨 {report.positions_critical}")
         lines.append("")
         
-        # Position details
+        # Position details grouped by wallet
         if self.analyses:
             lines.append("📋 Позиции:")
-            for a in sorted(self.analyses, key=lambda x: x.balance_usd, reverse=True)[:7]:
-                status_emoji = "🟢" if a.status == "HEALTHY" else "⚠️" if a.status == "WARNING" else "🚨"
-                range_emoji = "✓" if a.in_range else "✗"
-                chain_emoji = "🔷" if a.chain == "arbitrum" else "🟡"
+            
+            from collections import defaultdict
+            by_wallet = defaultdict(list)
+            for a in self.analyses:
+                by_wallet[a.wallet_name].append(a)
+            
+            for wallet_name in sorted(by_wallet.keys()):
+                wallet_analyses = sorted(by_wallet[wallet_name], key=lambda x: x.balance_usd, reverse=True)
                 
-                lines.append(f"{status_emoji}{chain_emoji} {a.wallet_name} | {a.symbol}")
-                lines.append(f"   ${a.balance_usd:,.0f} | {range_emoji} | {a.recommendation}")
+                lines.append(f"")
+                lines.append(f"👛 {wallet_name}:")
+                
+                for a in wallet_analyses:
+                    status_emoji = "🟢" if a.status == "HEALTHY" else "⚠️" if a.status == "WARNING" else "🚨"
+                    range_emoji = "✓" if a.in_range else "✗"
+                    chain_emoji = "🔷" if a.chain == "arbitrum" else "🟡"
+                    
+                    lines.append(f"  {status_emoji}{chain_emoji} {a.symbol}")
+                    lines.append(f"      ${a.balance_usd:,.0f} | {range_emoji} | {a.recommendation}")
             lines.append("")
         
         # Action items
