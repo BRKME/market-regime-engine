@@ -506,7 +506,7 @@ class LPAdvisor:
                 lines.append(f"{wallet_name}:")
                 
                 for a in wallet_analyses:
-                    status = "+" if a.in_range else "-"
+                    status = "🟢" if a.in_range else "🔴"
                     lines.append(f"  {status} {a.symbol} ${a.balance_usd:,.0f} -> {a.recommendation}")
             lines.append("")
         
