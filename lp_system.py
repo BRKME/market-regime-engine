@@ -342,10 +342,12 @@ def run_advisor(monitor_data: dict, opportunities_data: Optional[dict], history:
         tvl = monitor_data.get("tvl", 0)
         fees = monitor_data.get("fees", 0)
         positions = monitor_data.get("positions", [])
+        count = len(positions)
+        in_range = sum(1 for p in positions if p.get("in_range", False))
+        out_range = count - in_range
         
         # Regime info
         regime = opportunities_data.get("regime", "UNKNOWN") if opportunities_data else "UNKNOWN"
-        regime_penalty = opportunities_data.get("regime_penalty", 0.4) if opportunities_data else 0.4
         
         # Portfolio APY (calculated from history)
         portfolio_apy = opportunities_data.get("portfolio_apy") if opportunities_data else None
@@ -358,7 +360,10 @@ def run_advisor(monitor_data: dict, opportunities_data: Optional[dict], history:
             if top_pools:
                 benchmark_apy = sum(p.get("risk_adj_apy", 0) for p in top_pools) / len(top_pools)
         
-        # === ANALYZE EACH POSITION FOR REGIME FIT ===
+        # === DETERMINE PORTFOLIO HEALTH ===
+        
+        all_in_range = (in_range == count)
+        has_apy_data = portfolio_apy is not None
         
         # Token type classification
         def get_token_type(symbol: str) -> str:
@@ -371,130 +376,81 @@ def run_advisor(monitor_data: dict, opportunities_data: Optional[dict], history:
                 return "major"
             return "alt"
         
-        # Regime suitability
-        def get_regime_fit(t0_type: str, t1_type: str, regime: str) -> str:
-            """Evaluate if pair fits current regime"""
-            pair_type = f"{t0_type}/{t1_type}"
-            
-            # Stable/stable - always good
-            if t0_type == "stable" and t1_type == "stable":
-                return "отлично"
-            
-            # Stable/major - good in most regimes
-            if (t0_type == "stable" and t1_type == "major") or (t0_type == "major" and t1_type == "stable"):
-                if regime in ["BEAR", "TRENDING", "CHURN"]:
-                    return "умеренно (риск IL)"
-                return "хорошо"
-            
-            # Major/major - moderate IL risk
-            if t0_type == "major" and t1_type == "major":
-                if regime in ["BEAR", "TRENDING"]:
-                    return "риск IL при тренде"
-                return "хорошо"
-            
-            # Anything with alt - high risk
-            if t0_type == "alt" or t1_type == "alt":
-                if regime in ["BEAR", "TRENDING", "CHURN"]:
-                    return "высокий риск IL!"
-                return "умеренный риск"
-            
-            return "неизвестно"
+        # Count position types
+        stable_stable = 0
+        stable_major = 0
+        major_major = 0
+        with_alt = 0
         
-        # Analyze positions
-        position_analyses = []
         for p in positions:
-            t0 = p.get("token0_symbol", "")
-            t1 = p.get("token1_symbol", "")
-            balance = p.get("balance_usd", 0)
-            in_range = p.get("in_range", False)
-            wallet = p.get("wallet_name", "")
+            t0 = get_token_type(p.get("token0_symbol", ""))
+            t1 = get_token_type(p.get("token1_symbol", ""))
             
-            t0_type = get_token_type(t0)
-            t1_type = get_token_type(t1)
-            regime_fit = get_regime_fit(t0_type, t1_type, regime)
-            
-            position_analyses.append({
-                "wallet": wallet,
-                "pair": f"{t0}-{t1}",
-                "balance": balance,
-                "in_range": in_range,
-                "type": f"{t0_type}/{t1_type}",
-                "regime_fit": regime_fit,
-            })
-        
-        # Group by wallet for summary
-        from collections import defaultdict
-        by_wallet = defaultdict(list)
-        for pa in position_analyses:
-            by_wallet[pa["wallet"]].append(pa)
+            if t0 == "stable" and t1 == "stable":
+                stable_stable += 1
+            elif (t0 == "stable" and t1 == "major") or (t0 == "major" and t1 == "stable"):
+                stable_major += 1
+            elif t0 == "major" and t1 == "major":
+                major_major += 1
+            else:
+                with_alt += 1
         
         # === BUILD AI PROMPT ===
         
-        # APY comparison section
-        apy_section = ""
-        if portfolio_apy and benchmark_apy:
-            diff = portfolio_apy - benchmark_apy
-            if diff > 5:
-                apy_section = f"Ваш портфель: {portfolio_apy:.1f}% APY, бенчмарк: {benchmark_apy:.1f}%. Вы обгоняете рынок на {diff:.1f}%!"
-            elif diff > -5:
-                apy_section = f"Ваш портфель: {portfolio_apy:.1f}% APY, бенчмарк: {benchmark_apy:.1f}%. Примерно на уровне рынка."
-            else:
-                apy_section = f"Ваш портфель: {portfolio_apy:.1f}% APY, бенчмарк: {benchmark_apy:.1f}%. Отстаёте на {abs(diff):.1f}%."
-        elif portfolio_apy:
-            apy_section = f"Ваш портфель: {portfolio_apy:.1f}% APY (недостаточно данных для сравнения с бенчмарком)."
+        # Portfolio status
+        if all_in_range and fees > 0:
+            status_line = f"Все {count} позиций в диапазоне, накоплено ${fees:.0f} fees. Портфель работает."
+        elif out_range > 0:
+            status_line = f"ВНИМАНИЕ: {out_range} из {count} позиций ВНЕ диапазона! Требуется действие."
         else:
-            apy_section = "APY портфеля: недостаточно исторических данных (нужно минимум 2 дня)."
+            status_line = f"{in_range}/{count} позиций активны."
         
-        # Regime section
+        # APY comparison
+        if has_apy_data and benchmark_apy:
+            diff = portfolio_apy - benchmark_apy
+            if diff >= -5:
+                apy_line = f"APY портфеля: {portfolio_apy:.1f}% (бенчмарк: {benchmark_apy:.1f}%). На уровне рынка или лучше."
+            else:
+                apy_line = f"APY портфеля: {portfolio_apy:.1f}% (бенчмарк: {benchmark_apy:.1f}%). Есть потенциал для улучшения."
+        else:
+            apy_line = "APY: недостаточно данных для расчёта (нужно минимум 2 дня истории)."
+        
+        # Regime description
         regime_descriptions = {
-            "BULL": "бычий тренд - рынок растёт",
-            "BEAR": "медвежий тренд - рынок падает",
-            "RANGE": "боковик - рынок консолидируется",
+            "BULL": "рост, тренд вверх",
+            "BEAR": "падение, тренд вниз",
+            "RANGE": "боковик, консолидация",
             "TRENDING": "сильный тренд",
-            "VOLATILE_CHOP": "высокая волатильность без направления",
-            "TRANSITION": "переходный период, неопределённость",
+            "VOLATILE_CHOP": "высокая волатильность",
+            "TRANSITION": "переходный период",
             "HARVEST": "идеально для LP",
             "CHURN": "хаотичное движение",
         }
         regime_desc = regime_descriptions.get(regime, regime)
         
-        # Position details by wallet
-        wallet_details = []
-        for wallet_name in sorted(by_wallet.keys()):
-            positions_info = []
-            for pa in by_wallet[wallet_name]:
-                status = "✓" if pa["in_range"] else "✗"
-                positions_info.append(f"{pa['pair']} (${pa['balance']:.0f}, {pa['type']}, {pa['regime_fit']})")
-            wallet_details.append(f"{wallet_name}: {'; '.join(positions_info)}")
+        # Pair composition
+        composition = f"stable/stable: {stable_stable}, stable/major: {stable_major}, major/major: {major_major}, с alt: {with_alt}"
         
-        prompt = f"""Ты LP-аналитик. Оцени портфель Uniswap V3 LP позиций.
+        prompt = f"""Ты LP-эксперт. Дай КРАТКУЮ оценку портфеля (3-4 предложения).
 
-=== ДОХОДНОСТЬ ===
-{apy_section}
+СТАТУС: {status_line}
 
-Топ пулы на рынке для сравнения:
-{chr(10).join([f"- {p['symbol']}: {p['risk_adj_apy']:.1f}% APY" for p in top_pools[:3]]) if top_pools else "Нет данных"}
+ДОХОДНОСТЬ: {apy_line}
 
-=== ФАЗА РЫНКА ===
-Текущий режим: {regime} ({regime_desc})
-Штраф IL: {regime_penalty:.0%}
+ФАЗА РЫНКА: {regime} ({regime_desc})
 
-Что это значит для LP:
-- BEAR/TRENDING: активы падают/растут сильно → высокий Impermanent Loss
-- RANGE/HARVEST: боковик → идеально для LP, IL минимален
-- При текущем режиме {regime} рекомендуется: {'stable пары или широкие диапазоны' if regime in ['BEAR', 'TRENDING', 'CHURN'] else 'можно использовать стандартные стратегии'}
+СОСТАВ ПАР: {composition}
 
-=== ПОЗИЦИИ ПО КОШЕЛЬКАМ ===
-{chr(10).join(wallet_details)}
+ПРАВИЛА ОТВЕТА:
+1. Если ВСЕ позиции в диапазоне и fees растут — НЕ рекомендуй менять позиции
+2. Если APY неизвестен — НЕ говори "отстаёт", просто отметь что данных пока нет
+3. Рекомендуй действия ТОЛЬКО если есть реальная проблема:
+   - Позиции вне диапазона
+   - APY известен И сильно ниже бенчмарка (>10%)
+4. При BEAR режиме отметь что пары с alt токенами несут повышенный риск IL, но НЕ требуй срочной смены если они в диапазоне
+5. Будь кратким и конкретным
 
-=== ЗАДАНИЕ ===
-Дай краткую оценку (3-4 предложения):
-1. Сравнение доходности портфеля с бенчмарком
-2. Насколько текущие пары подходят под режим {regime}
-3. Конкретные рекомендации (если нужны) или "портфель оптимален"
-
-НЕ ПАНИКУЙ при просадках - это часть рынка. Фокус на структуре портфеля, а не на краткосрочных движениях.
-Ответ на русском, максимум 500 символов."""
+Ответ на русском, 2-4 предложения."""
 
         # === CALL OPENAI ===
         
@@ -508,11 +464,11 @@ def run_advisor(monitor_data: dict, opportunities_data: Optional[dict], history:
             "messages": [
                 {
                     "role": "system",
-                    "content": "Ты профессиональный DeFi LP аналитик. Даёшь практичные оценки без паники. Понимаешь Impermanent Loss и влияние рыночных режимов на LP позиции."
+                    "content": "Ты спокойный и практичный DeFi LP эксперт. Не паникуешь, не даёшь лишних рекомендаций. Если портфель работает нормально — так и говоришь."
                 },
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": 350,
+            "max_tokens": 250,
             "temperature": 0.7
         }
         
@@ -635,12 +591,12 @@ def format_unified_report(
         bsc_pools = [p for p in opportunities_data["top_pools"] if p.get("chain", "").lower() == "bsc"]
         
         if arb_pools:
-            lines.append("Top ARB:")
+            lines.append("🏆 Top ARB LP:")
             for pool in arb_pools[:5]:
                 lines.append(f"  {pool['symbol']}: {pool['risk_adj_apy']:.1f}%")
         
         if bsc_pools:
-            lines.append("Top BSC:")
+            lines.append("🏆 Top BSC LP:")
             for pool in bsc_pools[:5]:
                 lines.append(f"  {pool['symbol']}: {pool['risk_adj_apy']:.1f}%")
         
@@ -649,23 +605,19 @@ def format_unified_report(
     # Regime with LP policy details (Russian)
     if opportunities_data:
         regime = opportunities_data.get("regime", "UNKNOWN")
-        regime_penalty = opportunities_data.get("regime_penalty", 0)
         lp_recommendation = opportunities_data.get("lp_recommendation", "")
         
-        lines.append(f"Режим: {regime}")
-        if regime_penalty:
-            # IL Penalty - это штраф за риск Impermanent Loss при текущем режиме рынка
-            lines.append(f"  Штраф IL: {regime_penalty:.0%} (коррекция APY за риск непостоянных потерь)")
+        lines.append(f"📈 Фаза рынка: {regime}")
         if lp_recommendation:
             lines.append(f"  {lp_recommendation}")
         lines.append("")
     
     # AI Summary
     if ai_summary:
-        lines.append("AI:")
+        lines.append("💡 Рекомендация эксперта:")
         lines.append(ai_summary)
     else:
-        lines.append("AI: (нет ключа OpenAI)")
+        lines.append("💡 Рекомендация эксперта: (нет ключа OpenAI)")
     
     return "\n".join(lines)
 
