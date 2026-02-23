@@ -697,18 +697,16 @@ class LPMonitor:
             wallet_fees = sum(p.uncollected_fees_usd for p in wallet_positions)
             
             lines.append(f"")
-            lines.append(f"👛 {wallet_name}: ${wallet_total:,.0f} (fees: ${wallet_fees:.2f})")
+            lines.append(f"{wallet_name}: ${wallet_total:,.0f} (fees: ${wallet_fees:.2f})")
             
             for p in wallet_positions:
                 status = "🟢" if p.in_range else "🔴"
-                chain_emoji = "🔷" if p.chain == "arbitrum" else "🟡"
-                lines.append(f"  {status}{chain_emoji} {p.token0_symbol}-{p.token1_symbol} ({p.fee_tier}%)")
-                lines.append(f"      ${p.balance_usd:,.0f} | fees: ${p.uncollected_fees_usd:.2f}")
+                lines.append(f"  {status} {p.token0_symbol}-{p.token1_symbol} ${p.balance_usd:,.0f}")
                 if not p.in_range:
                     if p.current_tick < p.tick_lower:
-                        lines.append(f"      ⬇️ Below range by {abs(p.distance_to_lower_pct):.1f}%")
+                        lines.append(f"      ⬇️ Below range {abs(p.distance_to_lower_pct):.1f}%")
                     else:
-                        lines.append(f"      ⬆️ Above range by {abs(p.distance_to_upper_pct):.1f}%")
+                        lines.append(f"      ⬆️ Above range {abs(p.distance_to_upper_pct):.1f}%")
         
         return "\n".join(lines)
 

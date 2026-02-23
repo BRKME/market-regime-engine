@@ -506,15 +506,11 @@ class LPAdvisor:
                 wallet_analyses = sorted(by_wallet[wallet_name], key=lambda x: x.balance_usd, reverse=True)
                 
                 lines.append(f"")
-                lines.append(f"👛 {wallet_name}:")
+                lines.append(f"{wallet_name}:")
                 
                 for a in wallet_analyses:
-                    status_emoji = "🟢" if a.status == "HEALTHY" else "⚠️" if a.status == "WARNING" else "🚨"
-                    range_emoji = "✓" if a.in_range else "✗"
-                    chain_emoji = "🔷" if a.chain == "arbitrum" else "🟡"
-                    
-                    lines.append(f"  {status_emoji}{chain_emoji} {a.symbol}")
-                    lines.append(f"      ${a.balance_usd:,.0f} | {range_emoji} | {a.recommendation}")
+                    status = "🟢" if a.in_range else "🔴"
+                    lines.append(f"  {status} {a.symbol} ${a.balance_usd:,.0f} → {a.recommendation}")
             lines.append("")
         
         # Action items
