@@ -1,1 +1,211 @@
-{}
+{
+  "timestamp": "2026-02-23T06:33:37.044406+00:00",
+  "regime": "BEAR",
+  "regime_recommendation": "Downtrend. IL risk. Prefer stable pairs.",
+  "total_tvl": 29756.811185754646,
+  "total_fees": 77.95703684015189,
+  "positions_analyzed": 11,
+  "positions_healthy": 2,
+  "positions_warning": 9,
+  "positions_critical": 0,
+  "position_analyses": [
+    {
+      "wallet_name": "MMA_1",
+      "chain": "arbitrum",
+      "symbol": "ZRO-WETH",
+      "balance_usd": 1555.4936310531414,
+      "fees_usd": 1.826596246244457,
+      "in_range": true,
+      "status": "WARNING",
+      "recommendation": "NARROW",
+      "reason": "High IL risk pair in BEAR regime. Consider safer pairs.",
+      "better_alternative": "WBTC-WETH",
+      "potential_improvement": 11.7651695
+    },
+    {
+      "wallet_name": "MMA_1",
+      "chain": "arbitrum",
+      "symbol": "WBTC-WETH",
+      "balance_usd": 7160.155838581099,
+      "fees_usd": 0.22484254507961712,
+      "in_range": true,
+      "status": "WARNING",
+      "recommendation": "HOLD",
+      "reason": "Position is healthy.",
+      "better_alternative": "WBTC-WETH",
+      "potential_improvement": 11.7651695
+    },
+    {
+      "wallet_name": "MMA_2",
+      "chain": "arbitrum",
+      "symbol": "WBTC-WETH",
+      "balance_usd": 3677.0150154177154,
+      "fees_usd": 7.919452281072092,
+      "in_range": true,
+      "status": "HEALTHY",
+      "recommendation": "HOLD",
+      "reason": "Position is healthy.",
+      "better_alternative": "WBTC-WETH",
+      "potential_improvement": 11.7651695
+    },
+    {
+      "wallet_name": "MMA_4",
+      "chain": "arbitrum",
+      "symbol": "PENDLE-WETH",
+      "balance_usd": 1699.9105686511218,
+      "fees_usd": 10.67068588244975,
+      "in_range": true,
+      "status": "HEALTHY",
+      "recommendation": "HOLD",
+      "reason": "Position is healthy.",
+      "better_alternative": "WBTC-WETH",
+      "potential_improvement": 11.7651695
+    },
+    {
+      "wallet_name": "MMA_1",
+      "chain": "bsc",
+      "symbol": "ASTER-USDT",
+      "balance_usd": 2321.8589006863276,
+      "fees_usd": 0.024050693582550523,
+      "in_range": true,
+      "status": "WARNING",
+      "recommendation": "NARROW",
+      "reason": "High IL risk pair in BEAR regime. Consider safer pairs.",
+      "better_alternative": "BTCB-WBNB",
+      "potential_improvement": 18.65430075
+    },
+    {
+      "wallet_name": "MMA_2",
+      "chain": "bsc",
+      "symbol": "ASTER-USDT",
+      "balance_usd": 1733.5406341823523,
+      "fees_usd": 5.368252280641245,
+      "in_range": true,
+      "status": "WARNING",
+      "recommendation": "NARROW",
+      "reason": "High IL risk pair in BEAR regime. Consider safer pairs.",
+      "better_alternative": "BTCB-WBNB",
+      "potential_improvement": 18.65430075
+    },
+    {
+      "wallet_name": "MMA_3",
+      "chain": "bsc",
+      "symbol": "ZEC-USDT",
+      "balance_usd": 1335.6467948465722,
+      "fees_usd": 10.973992184813557,
+      "in_range": true,
+      "status": "WARNING",
+      "recommendation": "NARROW",
+      "reason": "High IL risk pair in BEAR regime. Consider safer pairs.",
+      "better_alternative": "BTCB-WBNB",
+      "potential_improvement": 18.65430075
+    },
+    {
+      "wallet_name": "MMA_3",
+      "chain": "bsc",
+      "symbol": "USDT-WBNB",
+      "balance_usd": 2841.3727941544976,
+      "fees_usd": 2.5639362950343676,
+      "in_range": true,
+      "status": "WARNING",
+      "recommendation": "HOLD",
+      "reason": "Position is healthy.",
+      "better_alternative": "BTCB-WBNB",
+      "potential_improvement": 18.65430075
+    },
+    {
+      "wallet_name": "MMA_4",
+      "chain": "bsc",
+      "symbol": "ZEC-WBNB",
+      "balance_usd": 1082.6911955753064,
+      "fees_usd": 7.774073305023179,
+      "in_range": true,
+      "status": "WARNING",
+      "recommendation": "NARROW",
+      "reason": "High IL risk pair in BEAR regime. Consider safer pairs.",
+      "better_alternative": "BTCB-WBNB",
+      "potential_improvement": 18.65430075
+    },
+    {
+      "wallet_name": "MMA_4",
+      "chain": "bsc",
+      "symbol": "USDT-WBNB",
+      "balance_usd": 2974.6485866331377,
+      "fees_usd": 0.4730061704692125,
+      "in_range": true,
+      "status": "WARNING",
+      "recommendation": "HOLD",
+      "reason": "Position is healthy.",
+      "better_alternative": "BTCB-WBNB",
+      "potential_improvement": 18.65430075
+    },
+    {
+      "wallet_name": "MMA_5",
+      "chain": "bsc",
+      "symbol": "ASTER-USDT",
+      "balance_usd": 3374.477225973379,
+      "fees_usd": 30.138148955741865,
+      "in_range": true,
+      "status": "WARNING",
+      "recommendation": "NARROW",
+      "reason": "High IL risk pair in BEAR regime. Consider safer pairs.",
+      "better_alternative": "BTCB-WBNB",
+      "potential_improvement": 18.65430075
+    }
+  ],
+  "top_opportunities": [
+    {
+      "symbol": "WBTC-WETH",
+      "chain": "Arbitrum",
+      "apy": 16.22782,
+      "risk_adjusted_apy": 11.7651695,
+      "tvl": 46872007,
+      "il_risk": "Medium"
+    },
+    {
+      "symbol": "WETH-USDC",
+      "chain": "Arbitrum",
+      "apy": 20.48043,
+      "risk_adjusted_apy": 17.101159049999996,
+      "tvl": 42859348,
+      "il_risk": "Low"
+    },
+    {
+      "symbol": "WETH-USDT",
+      "chain": "Arbitrum",
+      "apy": 23.47229,
+      "risk_adjusted_apy": 19.59936215,
+      "tvl": 12822445,
+      "il_risk": "Low"
+    },
+    {
+      "symbol": "WBTC-USDT",
+      "chain": "Arbitrum",
+      "apy": 29.37067,
+      "risk_adjusted_apy": 24.52450945,
+      "tvl": 8965025,
+      "il_risk": "Low"
+    },
+    {
+      "symbol": "BTCB-WBNB",
+      "chain": "BSC",
+      "apy": 25.73007,
+      "risk_adjusted_apy": 18.65430075,
+      "tvl": 6493959,
+      "il_risk": "Medium"
+    }
+  ],
+  "action_items": [
+    "* MMA_1 | ZRO-WETH: NARROW - High IL risk pair in BEAR regime. Consider safer pairs.",
+    "* MMA_1 | WBTC-WETH: HOLD - Position is healthy.",
+    "* MMA_1 | ASTER-USDT: NARROW - High IL risk pair in BEAR regime. Consider safer pairs.",
+    "* MMA_2 | ASTER-USDT: NARROW - High IL risk pair in BEAR regime. Consider safer pairs.",
+    "* MMA_3 | ZEC-USDT: NARROW - High IL risk pair in BEAR regime. Consider safer pairs.",
+    "* MMA_3 | USDT-WBNB: HOLD - Position is healthy.",
+    "* MMA_4 | ZEC-WBNB: NARROW - High IL risk pair in BEAR regime. Consider safer pairs.",
+    "* MMA_4 | USDT-WBNB: HOLD - Position is healthy.",
+    "* MMA_5 | ASTER-USDT: NARROW - High IL risk pair in BEAR regime. Consider safer pairs.",
+    "Regime BEAR: Reduce exposure to volatile pairs. Prefer stable/major."
+  ],
+  "ai_summary": ""
+}
