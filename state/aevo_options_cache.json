@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-02-24T05:36:37.618466+00:00",
+  "eth": {
+    "underlying": "ETH",
+    "spot_price": 1822.338781,
+    "option": {
+      "instrument_name": "ETH-13MAR26-1700-P",
+      "underlying": "ETH",
+      "option_type": "P",
+      "strike": 1700.0,
+      "expiry": "13MAR26",
+      "expiry_timestamp": 1773360000,
+      "mark_price": 66.28874,
+      "bid_price": 63.8,
+      "ask_price": 68.5,
+      "iv": 0.0,
+      "delta": 0.0,
+      "premium_pct": 3.6375640298684955,
+      "days_to_expiry": 16
+    },
+    "contracts": 1.0852241821908224,
+    "notional_usd": 1977.646113285345,
+    "total_premium_usd": 71.93814365496006,
+    "premium_pct": 3.6375640298684946,
+    "iv": 0.0,
+    "timestamp": "2026-02-24T05:36:21.919021+00:00"
+  },
+  "btc": {
+    "underlying": "BTC",
+    "spot_price": 62937.227238,
+    "option": {
+      "instrument_name": "BTC-13MAR26-60000-P",
+      "underlying": "BTC",
+      "option_type": "P",
+      "strike": 60000.0,
+      "expiry": "13MAR26",
+      "expiry_timestamp": 1773360000,
+      "mark_price": 2054.419226,
+      "bid_price": 1952.5,
+      "ask_price": 2135.0,
+      "iv": 0.0,
+      "delta": 0.0,
+      "premium_pct": 3.264235359831026,
+      "days_to_expiry": 16
+    },
+    "contracts": 0.031422517325187936,
+    "notional_usd": 1977.646113285345,
+    "total_premium_usd": 64.55502372218419,
+    "premium_pct": 3.264235359831026,
+    "iv": 0.0,
+    "timestamp": "2026-02-24T05:36:37.617954+00:00"
+  },
+  "error": null
+}
