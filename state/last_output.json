@@ -1,6 +1,6 @@
 {
   "risk": {
-    "risk_level": -0.749,
+    "risk_level": -0.7274,
     "risk_state": "RISK_OFF",
     "strength": "extreme",
     "risk_exposure_cap": 0.1,
@@ -12,78 +12,78 @@
   },
   "regime": "BEAR",
   "probabilities": {
-    "BULL": 0.0781,
-    "BEAR": 0.4231,
-    "RANGE": 0.0486,
-    "TRANSITION": 0.4502
+    "BULL": 0.0846,
+    "BEAR": 0.4322,
+    "RANGE": 0.0551,
+    "TRANSITION": 0.4281
   },
   "confidence": {
-    "base": 0.2286,
-    "quality_adjusted": 0.168,
+    "base": 0.2106,
+    "quality_adjusted": 0.1536,
     "churn_penalty": 1.0,
     "switches_30d": 0
   },
   "buckets": {
-    "Momentum": -0.4606,
-    "Stability": -0.4832,
-    "Rotation": -0.8158,
-    "Sentiment": -0.3275,
-    "Macro": -0.0599
+    "Momentum": -0.5019,
+    "Stability": -0.4079,
+    "Rotation": -0.5225,
+    "Sentiment": -0.544,
+    "Macro": -0.1726
   },
   "bucket_details": {
     "momentum": {
-      "roc_blend_z": 0.0004546632950784476,
-      "trend_strength_z": -0.868536116944321,
+      "roc_blend_z": -0.20924700655301734,
+      "trend_strength_z": -0.607414163414431,
       "alignment": -1.0,
-      "dtmc_z": -0.15824405865140498,
-      "absolute_momentum": -0.4963437119582408
+      "dtmc_z": -0.35158552899835394,
+      "absolute_momentum": -0.5214545597029507
     },
     "stability": {
-      "neg_vol_z": -0.8845686156687848,
-      "liquidity_z": 0.00841360239254498,
-      "depth_z": -0.5290932658435887
+      "neg_vol_z": -0.769128364315774,
+      "liquidity_z": 0.047239614080042,
+      "depth_z": -0.4669384351233431
     },
     "rotation": {
-      "velocity_z": -0.6212616001576399,
-      "accel_z": -1.5684028341142302
+      "velocity_z": -0.6855802957953604,
+      "accel_z": -0.605880311910012
     },
     "sentiment": {
       "fg_score": -1.0,
-      "funding_score": 0.03775372619056187,
-      "oi_score": 0.02961809323853616,
+      "funding_score": 0.03676953823733753,
+      "oi_score": -0.8348488502395296,
       "fg_raw": 11
     },
     "macro": {
-      "dollar_signal": 0.05809575382459907,
+      "dollar_signal": -0.3174978976633855,
       "rate_signal": 1.6132053732665463,
       "yc_z": -1.2339589797176889,
       "m2_z": -0.9354085752284415
     }
   },
   "cross_asset": {
-    "corr_BTC_SPX": 0.27,
-    "corr_BTC_Gold": 0.015,
+    "corr_BTC_SPX": 0.266,
+    "corr_BTC_Gold": 0.016,
     "macro_weight_boost": 1.0
   },
   "bucket_health": {
     "effective_dimensionality": 3,
     "pairwise_correlations": {
-      "Momentum/Stability": 0.764,
-      "Momentum/Rotation": -0.004,
-      "Momentum/Sentiment": 0.135,
-      "Momentum/Macro": -0.639,
-      "Stability/Rotation": -0.375,
-      "Stability/Sentiment": -0.052,
-      "Stability/Macro": -0.604,
-      "Rotation/Sentiment": 0.191,
-      "Rotation/Macro": -0.137,
-      "Sentiment/Macro": -0.277
+      "Momentum/Stability": 0.795,
+      "Momentum/Rotation": -0.077,
+      "Momentum/Sentiment": 0.039,
+      "Momentum/Macro": -0.653,
+      "Stability/Rotation": -0.425,
+      "Stability/Sentiment": -0.151,
+      "Stability/Macro": -0.614,
+      "Rotation/Sentiment": 0.234,
+      "Rotation/Macro": -0.091,
+      "Sentiment/Macro": -0.22
     },
     "flags": [
-      "ANOMALOUS_CORR_Momentum_Stability: 0.76",
-      "REDUNDANCY_Momentum_Stability: |corr|=0.76",
-      "ANOMALOUS_CORR_Momentum_Macro: -0.64",
-      "ANOMALOUS_CORR_Stability_Macro: -0.60"
+      "ANOMALOUS_CORR_Momentum_Stability: 0.79",
+      "REDUNDANCY_Momentum_Stability: |corr|=0.79",
+      "ANOMALOUS_CORR_Momentum_Macro: -0.65",
+      "ANOMALOUS_CORR_Stability_Macro: -0.61"
     ]
   },
   "regime_dynamics": {
@@ -122,10 +122,10 @@
   },
   "exposure_cap": 0.1,
   "risk_flags": [
-    "ANOMALOUS_CORR_Momentum_Stability: 0.76",
-    "REDUNDANCY_Momentum_Stability: |corr|=0.76",
-    "ANOMALOUS_CORR_Momentum_Macro: -0.64",
-    "ANOMALOUS_CORR_Stability_Macro: -0.60",
+    "ANOMALOUS_CORR_Momentum_Stability: 0.79",
+    "REDUNDANCY_Momentum_Stability: |corr|=0.79",
+    "ANOMALOUS_CORR_Momentum_Macro: -0.65",
+    "ANOMALOUS_CORR_Stability_Macro: -0.61",
     "TRANSITION_STICKY: self-transition=0.93"
   ],
   "normalization": {
@@ -135,43 +135,43 @@
   },
   "metadata": {
     "model_version": "3.3",
-    "days_in_regime": 29,
+    "days_in_regime": 30,
     "temperature": 1.0,
     "smoothing_alpha": 0.3,
-    "vol_z": 0.8846,
+    "vol_z": 0.7691,
     "data_completeness": 1.0,
     "failed_sources": [],
-    "timestamp": "2026-02-26T04:58:07.247474",
-    "btc_price": 68630.9140625,
-    "eth_price": 2077.73,
-    "returns_30d": -0.2298
+    "timestamp": "2026-02-26T15:42:24.790807",
+    "btc_price": 67214.1328125,
+    "eth_price": 2024.18,
+    "returns_30d": -0.2463
   },
   "lp_policy": {
-    "lp_regime": "MEAN_REVERT",
-    "risk_lp": 0.31,
+    "lp_regime": "BREAKOUT",
+    "risk_lp": 0.1,
     "risk_quadrant": "Q2",
-    "fee_variance_ratio": 1.86,
-    "uncertainty_value": 0.78,
-    "trend_persistence": 0.428,
-    "vol_structure": "RANGE_DOMINANT",
-    "max_exposure": 0.4,
-    "effective_exposure": 0.1,
+    "fee_variance_ratio": 1.63,
+    "uncertainty_value": 0.79,
+    "trend_persistence": 0.459,
+    "vol_structure": "LOW_VOL",
+    "max_exposure": 0.2,
+    "effective_exposure": 0.03,
     "range_width": "wide",
     "rebalance": "cautious",
     "hedge_recommended": true,
     "signals": [
       "High uncertainty \u2192 fee opportunity",
-      "Range-dominant volatility",
+      "Persistence high but unstable (churn)",
       "Q2: Dir risk high, LP opportunity exists",
       "Structural break \u2192 conservative"
     ],
-    "confidence": 0.71
+    "confidence": 0.64
   },
   "asset_allocation": {
     "btc": {
       "action": "STRONG_SELL",
       "size_pct": -0.3,
-      "confidence": 0.168,
+      "confidence": 0.1536,
       "stance": "RISK_OFF",
       "blocked_by": null,
       "reasoning": [
@@ -182,7 +182,7 @@
     "eth": {
       "action": "STRONG_SELL",
       "size_pct": -0.5,
-      "confidence": 0.168,
+      "confidence": 0.1536,
       "stance": "RISK_OFF",
       "blocked_by": null,
       "reasoning": [
