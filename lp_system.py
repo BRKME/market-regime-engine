@@ -501,13 +501,12 @@ def format_unified_report(
     history: List[dict],
     hedge_report: Optional[str] = None
 ) -> str:
-    """Format unified Telegram report"""
+    """Format unified Telegram report - clean UX"""
     
     now = datetime.now(timezone.utc)
     msk_time = now + timedelta(hours=3)
     
     lines = [
-        "#LP #Uniswap",
         f"📊 LP Report | {msk_time.strftime('%d.%m %H:%M')} MSK",
         "",
     ]
@@ -518,9 +517,15 @@ def format_unified_report(
     count = monitor_data.get("count", 0)
     in_range = monitor_data.get("in_range", 0)
     
-    lines.append(f"TVL: ${tvl:,.0f}")
-    lines.append(f"Fees: ${fees:,.2f}")
-    lines.append(f"In Range: {in_range}/{count}")
+    # Visual in-range indicator
+    if in_range == count:
+        range_status = f"✓ {in_range}/{count} in range"
+    else:
+        out_of_range = count - in_range
+        range_status = f"⚠️ {out_of_range}/{count} out of range"
+    
+    lines.append(f"TVL: ${tvl:,.0f} | Fees: ${fees:,.2f}")
+    lines.append(range_status)
     
     # Portfolio APY if available
     portfolio_apy = opportunities_data.get("portfolio_apy") if opportunities_data else None
@@ -530,30 +535,29 @@ def format_unified_report(
         if top_5:
             benchmark_apy = sum(p.get("risk_adj_apy", 0) for p in top_5) / len(top_5)
     
-    if portfolio_apy:
+    if portfolio_apy and portfolio_apy < 1000:  # Sanity check
         apy_line = f"APY: {portfolio_apy:.1f}%"
         if benchmark_apy:
             diff = portfolio_apy - benchmark_apy
             if diff > 0:
-                apy_line += f" (бенчмарк: {benchmark_apy:.1f}%, +{diff:.1f}%)"
+                apy_line += f" (vs benchmark {benchmark_apy:.0f}%: +{diff:.0f}%)"
             else:
-                apy_line += f" (бенчмарк: {benchmark_apy:.1f}%, {diff:.1f}%)"
+                apy_line += f" (vs benchmark {benchmark_apy:.0f}%: {diff:.0f}%)"
         lines.append(apy_line)
     
     # TVL Changes - only show if we have real data
     if len(history) >= 2:
-        lines.append("")
-        lines.append("Changes:")
-        
         abs_1d, pct_1d = get_tvl_change(history, tvl, 1)
         abs_7d, pct_7d = get_tvl_change(history, tvl, 7)
-        abs_30d, pct_30d = get_tvl_change(history, tvl, 30)
         
-        lines.append(f"  24h: {format_change(abs_1d, pct_1d)}")
-        lines.append(f"  7d:  {format_change(abs_7d, pct_7d)}")
-        lines.append(f"  30d: {format_change(abs_30d, pct_30d)}")
+        if abs_1d is not None:
+            lines.append("")
+            change_line = f"24h: {format_change(abs_1d, pct_1d)}"
+            if abs_7d is not None:
+                change_line += f" | 7d: {format_change(abs_7d, pct_7d)}"
+            lines.append(change_line)
     
-    # Positions by wallet
+    # Positions by wallet - compact
     lines.append("")
     
     positions = monitor_data.get("positions", [])
@@ -572,57 +576,63 @@ def format_unified_report(
         lines.append(f"{wallet_name}: ${w_total:,.0f} (fees: ${w_fees:.2f})")
         
         for p in w_positions:
-            # Emoji for in-range status
             status = "🟢" if p.get("in_range", False) else "🔴"
             symbol = f"{p.get('token0_symbol', '')}-{p.get('token1_symbol', '')}"
             balance = p.get("balance_usd", 0)
             lines.append(f"  {status} {symbol} ${balance:,.0f}")
             
+            # Show out-of-range details
             if not p.get("in_range", False):
                 if p.get("current_tick", 0) < p.get("tick_lower", 0):
-                    lines.append(f"    Below range {abs(p.get('distance_to_lower_pct', 0)):.1f}%")
+                    pct = abs(p.get('distance_to_lower_pct', 0))
+                    lines.append(f"     ↓ {pct:.1f}% below range")
                 else:
-                    lines.append(f"    Above range {abs(p.get('distance_to_upper_pct', 0)):.1f}%")
+                    pct = abs(p.get('distance_to_upper_pct', 0))
+                    lines.append(f"     ↑ {pct:.1f}% above range")
         
         lines.append("")
     
-    # Top opportunities - expanded to 10, split by chain
+    # Top opportunities - compact
     if opportunities_data and opportunities_data.get("top_pools"):
         arb_pools = [p for p in opportunities_data["top_pools"] if p.get("chain", "").lower() == "arbitrum"]
         bsc_pools = [p for p in opportunities_data["top_pools"] if p.get("chain", "").lower() == "bsc"]
         
-        if arb_pools:
-            lines.append("💎 Top ARB LP:")
-            for pool in arb_pools[:5]:
-                lines.append(f"  {pool['symbol']}: {pool['risk_adj_apy']:.1f}%")
-        
-        if bsc_pools:
-            lines.append("💎 Top BSC LP:")
-            for pool in bsc_pools[:5]:
-                lines.append(f"  {pool['symbol']}: {pool['risk_adj_apy']:.1f}%")
-        
-        lines.append("")
+        if arb_pools or bsc_pools:
+            lines.append("💎 Top Opportunities:")
+            
+            if arb_pools:
+                top_arb = arb_pools[:3]
+                arb_str = " | ".join([f"{p['symbol']} {p['risk_adj_apy']:.0f}%" for p in top_arb])
+                lines.append(f"  ARB: {arb_str}")
+            
+            if bsc_pools:
+                top_bsc = bsc_pools[:3]
+                bsc_str = " | ".join([f"{p['symbol']} {p['risk_adj_apy']:.0f}%" for p in top_bsc])
+                lines.append(f"  BSC: {bsc_str}")
+            
+            lines.append("")
     
-    # Regime with LP policy details (Russian)
+    # Regime - simple
     if opportunities_data:
         regime = opportunities_data.get("regime", "UNKNOWN")
+        regime_emoji = {"BULL": "🟢", "BEAR": "🔴", "RANGE": "🟡", "TRANSITION": "⚪"}.get(regime, "⚪")
         lp_recommendation = opportunities_data.get("lp_recommendation", "")
         
-        lines.append(f"📈 Фаза рынка: {regime}")
+        lines.append(f"{regime_emoji} Market: {regime}")
         if lp_recommendation:
             lines.append(f"  {lp_recommendation}")
         lines.append("")
     
-    # AI Summary
-    if ai_summary:
-        lines.append("🎯 Рекомендация эксперта:")
-        lines.append(ai_summary)
-    else:
-        lines.append("🎯 Рекомендация эксперта: (нет ключа OpenAI)")
+    # AI Summary - only if specific
+    if ai_summary and len(ai_summary) > 20:
+        # Clean up generic phrases
+        summary = ai_summary.replace("Портфель работает нормально, ", "").strip()
+        if summary:
+            lines.append(f"💡 {summary}")
+            lines.append("")
     
     # Hedge Report
     if hedge_report:
-        lines.append("")
         lines.append(hedge_report)
     
     return "\n".join(lines)

@@ -18,9 +18,8 @@ logger = logging.getLogger(__name__)
 
 def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     """
-    Action-first format.
-    Показатели: English
-    Комментарии: Русский
+    Action-first format - simplified for clarity.
+    One clear signal, one action.
     """
     meta = output.get("metadata", {})
     risk = output.get("risk", {})
@@ -46,101 +45,79 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         tail_active = allocation.get("meta", {}).get("tail_risk_active", False)
         tail_polarity = allocation.get("meta", {}).get("tail_polarity", "downside")
     
-    # Risk state
-    if risk_level < -0.5:
-        risk_state = "RISK-OFF"
-        risk_emoji = "🔴"
-    elif risk_level < 0:
-        risk_state = "CAUTIOUS"
-        risk_emoji = "🟡"
-    elif risk_level < 0.5:
-        risk_state = "NEUTRAL"
-        risk_emoji = "⚪"
-    else:
-        risk_state = "RISK-ON"
-        risk_emoji = "🟢"
-    
     lines = []
     
     # ══════════════════════════════════════════════════════
-    # HEADER
+    # HEADER - simplified, one clear state
     # ══════════════════════════════════════════════════════
-    if tail_active:
-        lines.append(f"🚨 ALERT: TAIL RISK · {risk_state}")
-        lines.append(f"   → Экстремальный риск, защита капитала")
-    elif risk_level < -0.3:
-        lines.append(f"⚠️ RISK-OFF MODE")
-        lines.append(f"   → Негативный сигнал, снижение риска")
-    else:
-        lines.append(f"📊 MONITORING · {risk_state}")
-    
-    # Prices (ETH from CoinGecko global if available)
     eth_price = meta.get("eth_price", 0)
+    price_line = f"BTC ${btc_price:,.0f}"
     if eth_price > 0:
-        lines.append(f"BTC ${btc_price:,.0f} · ETH ${eth_price:,.0f}")
+        price_line += f" · ETH ${eth_price:,.0f}"
+    
+    if tail_active:
+        lines.append(f"⚠️ ELEVATED RISK")
+        lines.append(price_line)
     else:
-        lines.append(f"BTC ${btc_price:,.0f}")
+        lines.append(f"📊 MARKET STATE")
+        lines.append(price_line)
     lines.append("")
     
     # ══════════════════════════════════════════════════════
-    # REGIME + PROBABILITIES
+    # REGIME - with visual confidence bar
     # ══════════════════════════════════════════════════════
     regime_emoji = {"BULL": "🟢", "BEAR": "🔴", "RANGE": "🟡", "TRANSITION": "⚪"}.get(regime, "⚪")
     
-    # Phase
+    # Phase description
     if days <= 1:
         phase = "early"
     elif days <= 7:
         phase = f"{days}d"
     else:
-        phase = f"{days}d mature"
+        phase = f"{days}d"
     
     conf_pct = int(conf_adj * 100)
     
-    # REGIME line with phase and confidence in parentheses
-    lines.append(f"{regime_emoji} {regime} ({phase} · Confidence: {conf_pct}%)")
+    # Visual confidence bar
+    filled = int(conf_adj * 10)
+    empty = 10 - filled
+    conf_bar = '█' * filled + '░' * empty
     
-    # Tail risk indicator
+    lines.append(f"{regime_emoji} {regime} ({phase})")
+    lines.append(f"[{conf_bar}] {conf_pct}%")
+    
+    # Tail risk indicator (simplified)
     if tail_active:
-        if tail_polarity == "downside":
-            lines.append(f"   Tail risk: ACTIVE ↓")
-        else:
-            lines.append(f"   Tail risk: ACTIVE ↑")
+        lines.append(f"↓ Elevated downside risk")
     
-    # Dir (directional risk) - показатель направленного риска
-    if risk_level < 0:
-        dir_arrow = "↓"
-        dir_comment = "угол падения"
-    else:
-        dir_arrow = "↑"
-        dir_comment = "угол роста"
-    lines.append(f"   Dir: {dir_arrow} {abs(risk_level):.2f} ({dir_comment})")
-    
-    # Probabilities with visual bars
     lines.append("")
-    lines.append("Probabilities (режим рынка):")
     
+    # ══════════════════════════════════════════════════════
+    # PROBABILITIES - simplified interpretation
+    # ══════════════════════════════════════════════════════
     prob_bull = probs.get("BULL", 0)
     prob_bear = probs.get("BEAR", 0)
     prob_range = probs.get("RANGE", 0)
     prob_trans = probs.get("TRANSITION", 0)
     
-    def make_bar(value, width=12):
-        filled = int(value * width)
-        return "█" * filled + "░" * (width - filled)
+    # Only show if there's meaningful spread
+    max_prob = max(prob_bull, prob_bear, prob_range, prob_trans)
+    second_prob = sorted([prob_bull, prob_bear, prob_range, prob_trans])[-2]
     
-    lines.append(f"   BULL       {make_bar(prob_bull)} {int(prob_bull*100)}%")
-    lines.append(f"   BEAR       {make_bar(prob_bear)} {int(prob_bear*100)}%")
-    lines.append(f"   RANGE      {make_bar(prob_range)} {int(prob_range*100)}%")
-    lines.append(f"   TRANSITION {make_bar(prob_trans)} {int(prob_trans*100)}%")
+    if max_prob - second_prob < 0.15:
+        # Close call - explain uncertainty
+        lines.append("Model sees mixed signals:")
+        if prob_bear > 0.3:
+            lines.append(f"  BEAR {int(prob_bear*100)}% vs TRANSITION {int(prob_trans*100)}%")
+        else:
+            lines.append(f"  Dominant: {regime} {int(max_prob*100)}%")
     
     # Rich logic comment (Russian)
-    lines.append("")
     comment = _get_regime_comment(regime, days, tail_active, conf_adj, mom, risk_level)
     lines.append(f"→ {comment}")
     
     # ══════════════════════════════════════════════════════
-    # DIRECTIONAL POLICY
+    # DIRECTIONAL POLICY - only if actionable
     # ══════════════════════════════════════════════════════
     if allocation:
         btc = allocation.get("btc", {})
@@ -151,27 +128,30 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         btc_size = btc.get("size_pct", 0)
         eth_size = eth.get("size_pct", 0)
         
-        lines.append("")
-        lines.append("📉 DIRECTIONAL (спот позиции):")
-        
-        # Actions
-        btc_str = f"{btc_size:+.0%}" if btc_size != 0 else ""
-        eth_str = f"{eth_size:+.0%}" if eth_size != 0 else ""
-        
-        lines.append(f"   BTC: {btc_action} {btc_str}")
-        lines.append(f"   ETH: {eth_action} {eth_str}")
-        
-        # Reason (compact)
-        if btc.get("blocked_by"):
-            lines.append(f"   Blocked: {btc['blocked_by'].lower()}")
-        
-        # Directional comment (Russian)
-        dir_comment = _get_directional_comment(btc_action, eth_action, regime, tail_active, conf_adj, mom)
-        if dir_comment:
-            lines.append(f"   → {dir_comment}")
+        # Only show if there's an action
+        if btc_action != "HOLD" or eth_action != "HOLD":
+            lines.append("")
+            lines.append("📉 SPOT POSITIONS:")
+            
+            if btc_action != "HOLD":
+                btc_str = f"{btc_size:+.0%}" if btc_size != 0 else ""
+                lines.append(f"  BTC: {btc_action} {btc_str}")
+            
+            if eth_action != "HOLD":
+                eth_str = f"{eth_size:+.0%}" if eth_size != 0 else ""
+                lines.append(f"  ETH: {eth_action} {eth_str}")
+            
+            # Warning about low confidence + strong action
+            if conf_adj < 0.3 and ("STRONG" in btc_action or "STRONG" in eth_action):
+                lines.append(f"  ⚠️ Low confidence ({conf_pct}%) - consider smaller size")
+            
+            # Directional comment
+            dir_comment = _get_directional_comment(btc_action, eth_action, regime, tail_active, conf_adj, mom)
+            if dir_comment:
+                lines.append(f"  → {dir_comment}")
     
     # ══════════════════════════════════════════════════════
-    # LP POLICY with QUADRANT MATRIX
+    # LP POLICY - simplified, no matrix
     # ══════════════════════════════════════════════════════
     if lp_policy:
         risk_lp = lp_policy.risk_lp
@@ -184,97 +164,60 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         
         lines.append("")
         
-        # Quadrant emoji as header (цвет шарика = фаза)
-        quadrant_info = {
-            "Q1": ("🟢", "Q1 — Идеально для LP"),
-            "Q2": ("🔵", "Q2 — LP возможности"),
-            "Q3": ("🟡", "Q3 — Лучше спот"),
-            "Q4": ("🔴", "Q4 — Выход/минимум"),
+        # Simple quadrant description
+        quadrant_desc = {
+            "Q1": "🟢 LP: Ideal conditions",
+            "Q2": "🔵 LP: Good, but hedge needed",
+            "Q3": "🟡 LP: Spot preferred",
+            "Q4": "🔴 LP: Minimize exposure",
         }
-        q_emoji, q_desc = quadrant_info.get(quadrant, ("⚪", quadrant))
-        lines.append(f"{q_emoji} LP POLICY:")
-        lines.append(f"   {q_desc}")
+        lines.append(quadrant_desc.get(quadrant, f"LP: {quadrant}"))
         
-        # Quadrant matrix (pre-formatted, no code tags)
-        lines.append("")
-        q3 = "[Q3]" if quadrant == "Q3" else " Q3 "
-        q1 = "[Q1]" if quadrant == "Q1" else " Q1 "
-        q4 = "[Q4]" if quadrant == "Q4" else " Q4 "
-        q2 = "[Q2]" if quadrant == "Q2" else " Q2 "
+        # Key metrics
+        lines.append(f"  Exposure: {max_exp}% | Range: {range_width}")
         
-        lines.append(f"   ┌──────┬──────┐")
-        lines.append(f"   │ {q3} │ {q1} │ LP↑")
-        lines.append(f"   ├──────┼──────┤")
-        lines.append(f"   │ {q4} │ {q2} │ LP↓")
-        lines.append(f"   └──────┴──────┘")
-        
-        # LP доходность comment
-        if risk_lp > 0.5:
-            lp_risk_comment = "отлично"
-        elif risk_lp > 0.2:
-            lp_risk_comment = "умеренно"
-        elif risk_lp > -0.2:
-            lp_risk_comment = "нейтрально"
-        elif risk_lp > -0.5:
-            lp_risk_comment = "плохо"
-        else:
-            lp_risk_comment = "очень плохо"
-        
-        # F/V comment (fee vs IL) - показывает на сколько % комиссии больше/меньше IL
-        if fv >= 2.0:
-            fv_pct = int((fv - 1) * 100)
-            fv_comment = f"комиссии +{fv_pct}% к IL"
+        # Fee vs IL ratio
+        if fv >= 1.5:
+            lines.append(f"  Fees cover IL: {fv:.1f}x ✓")
         elif fv >= 1.0:
-            fv_pct = int((fv - 1) * 100)
-            fv_comment = f"комиссии +{fv_pct}% к IL"
+            lines.append(f"  Fees vs IL: {fv:.1f}x (marginal)")
         else:
-            fv_pct = int((1 - fv) * 100)
-            fv_comment = f"IL +{fv_pct}% к комиссиям"
-        
-        lines.append("")
-        lines.append(f"   LP доходность: {risk_lp:+.2f} ({lp_risk_comment})")
-        lines.append(f"   F/V: {fv:.1f}x ({fv_comment})")
-        lines.append(f"   Exposure: {max_exp}%")
-        lines.append(f"   Range: {range_width}")
+            lines.append(f"  ⚠️ IL exceeds fees: {fv:.1f}x")
         
         if hedge:
-            lines.append(f"   Hedge: REQUIRED")
+            lines.append(f"  Hedge: REQUIRED")
         
-        # LP comment (Russian)
+        # LP comment
         lp_comment = _get_lp_comment(quadrant, risk_lp, risk_dir, max_exp, max_exp)
-        lines.append(f"   → {lp_comment}")
+        lines.append(f"  → {lp_comment}")
     
     # ══════════════════════════════════════════════════════
-    # FLAGS (if any)
+    # FLAGS - only if critical, no duplicates
     # ══════════════════════════════════════════════════════
     display_flags = []
     
-    if tail_active:
-        display_flags.append("Tail risk (экстремальная волатильность)")
-    
     if struct_break:
-        display_flags.append("Structure break (слом структуры)")
+        display_flags.append("Structure break detected")
     
-    # Check for data issues - show specific failed sources
+    # Data quality
     data_quality = meta.get("data_completeness", 1.0)
     failed_sources = meta.get("failed_sources", [])
     
     if failed_sources:
-        display_flags.append(f"Нет данных: {', '.join(failed_sources)}")
-    elif data_quality < 0.85 or any("DATA" in f for f in flags):
-        display_flags.append("Partial data — проверь источники")
+        display_flags.append(f"Data: {', '.join(failed_sources)} unavailable")
+    elif data_quality < 0.85:
+        display_flags.append("Partial data")
     
     if display_flags:
         lines.append("")
-        lines.append("⚠️ FLAGS")
-        for f in display_flags[:4]:
-            lines.append(f"   • {f}")
+        for f in display_flags[:2]:
+            lines.append(f"⚠️ {f}")
     
     # ══════════════════════════════════════════════════════
     # FOOTER
     # ══════════════════════════════════════════════════════
     lines.append("")
-    lines.append("v3.4 · LP v2.0.2 · AA v1.6.0")
+    lines.append("v3.5")
     
     return "\n".join(lines)
 

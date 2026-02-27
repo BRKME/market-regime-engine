@@ -467,29 +467,64 @@ class LPHedgeEngine:
         return True
     
     def classify_positions(self) -> Dict[str, float]:
-        """Classify all positions and calculate exposure"""
+        """
+        Classify all positions and calculate exposure.
+        
+        NEW APPROACH (per analyst feedback):
+        - Use total TVL as base
+        - Apply fixed proportions: BTC 40%, ETH 60%
+        - This ensures hedge covers directional risk regardless of actual LP composition
+        """
         
         self.classifications = []
-        exposure = {'ETH': 0, 'BTC': 0, 'BNB': 0}
+        actual_exposure = {'ETH': 0, 'BTC': 0, 'BNB': 0}
         non_hedgeable = 0
+        total_tvl = 0
         
+        # First pass: classify and sum TVL
         for pos in self.positions:
             token0 = pos.get('token0_symbol', '')
             token1 = pos.get('token1_symbol', '')
             balance = pos.get('balance_usd', 0)
+            total_tvl += balance
             
             classification = classify_position(token0, token1, balance)
             self.classifications.append(classification)
             
+            # Track actual exposure for logging
             if classification.hedgeable:
-                exposure['ETH'] += classification.exposure_eth
-                exposure['BTC'] += classification.exposure_btc
-                exposure['BNB'] += classification.exposure_bnb
+                actual_exposure['ETH'] += classification.exposure_eth
+                actual_exposure['BTC'] += classification.exposure_btc
+                actual_exposure['BNB'] += classification.exposure_bnb
             else:
                 non_hedgeable += balance
         
-        logger.info(f"Exposure: ETH=${exposure['ETH']:.0f}, BTC=${exposure['BTC']:.0f}, BNB=${exposure['BNB']:.0f}")
-        logger.info(f"Non-hedgeable: ${non_hedgeable:.0f}")
+        # NEW: Calculate hedge exposure based on TVL with fixed proportions
+        # Rationale: LP positions have crypto exposure regardless of pair composition
+        # We hedge the directional risk of the portfolio, not individual positions
+        
+        # Proportions (configurable)
+        ETH_PROPORTION = 0.60  # 60% of hedgeable TVL attributed to ETH
+        BTC_PROPORTION = 0.40  # 40% of hedgeable TVL attributed to BTC
+        
+        # Hedgeable TVL = TVL minus stablecoin-only positions
+        hedgeable_tvl = total_tvl - non_hedgeable
+        
+        # If most positions are non-hedgeable, use TVL * 0.5 as proxy
+        if hedgeable_tvl < total_tvl * 0.3:
+            hedgeable_tvl = total_tvl * 0.5
+            logger.info(f"Low hedgeable exposure, using TVL proxy: ${hedgeable_tvl:.0f}")
+        
+        exposure = {
+            'ETH': hedgeable_tvl * ETH_PROPORTION,
+            'BTC': hedgeable_tvl * BTC_PROPORTION,
+            'BNB': 0  # BNB hedging not reliable yet
+        }
+        
+        logger.info(f"TVL: ${total_tvl:.0f}, Hedgeable: ${hedgeable_tvl:.0f}")
+        logger.info(f"Exposure (TVL-based): ETH=${exposure['ETH']:.0f} (60%), BTC=${exposure['BTC']:.0f} (40%)")
+        logger.info(f"Actual exposure: ETH=${actual_exposure['ETH']:.0f}, BTC=${actual_exposure['BTC']:.0f}")
+        logger.info(f"Non-hedgeable (stables, alts): ${non_hedgeable:.0f}")
         
         return exposure, non_hedgeable
     
@@ -604,91 +639,93 @@ class LPHedgeEngine:
         return self.decision
     
     def format_report(self) -> str:
-        """Format hedge report for Telegram"""
+        """Format hedge report for Telegram - with economic analysis"""
         
         if not self.decision:
-            return "🛡️ Хеджирование: нет данных"
+            return "🛡️ Hedge: No data"
         
         d = self.decision
-        lines = ["🛡️ Хеджирование:"]
+        lines = []
         
-        # Status
+        # Header with status
         if d.action == 'NO_HEDGE':
-            lines.append("Статус: Не требуется")
+            lines.append("🛡️ Hedge: Not required")
+            lines.append(f"  {d.reason}")
         elif d.action == 'WAIT':
-            lines.append("Статус: Ожидание")
+            lines.append("🛡️ Hedge: Wait")
+            lines.append(f"  {d.reason}")
         else:
-            lines.append("Статус: Рекомендуется")
+            lines.append("🛡️ Hedge: Recommended")
+            lines.append(f"  Score: {d.hedge_score:.0%} → Ratio: {d.hedge_ratio:.0%}")
         
-        # Metrics
-        tail_str = "Active ⚠️" if d.tail_risk_active else "нет"
-        lines.append(f"Dir: {d.dir_value:+.2f} | TailRisk: {tail_str}")
-        lines.append(f"Hedge Score: {d.hedge_score:.2f}")
+        # Risk indicators - compact
+        tail_str = "⚠️" if d.tail_risk_active else ""
+        lines.append(f"  Dir: {d.dir_value:+.2f} {tail_str}")
         
-        if d.action == 'HEDGE':
-            lines.append(f"Hedge Ratio: {d.hedge_ratio:.0%}")
-        
-        # Reason
-        if d.action != 'HEDGE':
-            lines.append(f"Причина: {d.reason}")
-        
-        # Exposure
-        lines.append("")
-        lines.append("Экспозиция:")
-        
-        for asset, exp in d.hedgeable_exposure.items():
-            if exp > 0:
-                if d.action == 'HEDGE':
+        # Exposure breakdown
+        if d.action == 'HEDGE' and d.recommendations:
+            lines.append("")
+            lines.append("Exposure (TVL-based):")
+            
+            total_hedgeable = sum(d.hedgeable_exposure.values())
+            for asset, exp in d.hedgeable_exposure.items():
+                if exp > 0:
                     hedge_amt = exp * d.hedge_ratio
-                    lines.append(f"  {asset}: ${exp:,.0f} → хедж ${hedge_amt:,.0f}")
-                else:
-                    lines.append(f"  {asset}: ${exp:,.0f}")
-        
-        if d.non_hedgeable_exposure > 0:
-            lines.append(f"  Не хеджируемая: ${d.non_hedgeable_exposure:,.0f}")
-        
-        # Recommendations
-        if d.recommendations and d.action == 'HEDGE':
+                    pct = (exp / d.total_tvl * 100) if d.total_tvl > 0 else 0
+                    lines.append(f"  {asset}: ${exp:,.0f} ({pct:.0f}%) → hedge ${hedge_amt:,.0f}")
+            
+            if d.non_hedgeable_exposure > 0:
+                pct = (d.non_hedgeable_exposure / d.total_tvl * 100) if d.total_tvl > 0 else 0
+                lines.append(f"  Other: ${d.non_hedgeable_exposure:,.0f} ({pct:.0f}%) - no hedge available")
+            
+            # Recommendations with economics
             lines.append("")
+            
+            total_premium = 0
             for i, rec in enumerate(d.recommendations, 1):
-                lines.append(f"Предложение #{i} ({rec['underlying']}):")
+                underlying = rec['underlying']
+                notional = rec['notional_usd']
                 
-                # Show instrument name if available (live pricing)
-                if rec.get('instrument_name'):
-                    lines.append(f"  {rec['instrument_name']}")
+                # Calculate premium
+                if rec.get('mark_price') and rec.get('strike_price'):
+                    # Real premium from Aevo
+                    contracts = notional / rec['strike_price']
+                    premium = contracts * rec['mark_price']
+                    total_premium += premium
+                    
+                    lines.append(f"PUT {underlying}:")
+                    if rec.get('instrument_name'):
+                        lines.append(f"  {rec['instrument_name']}")
+                    lines.append(f"  Notional: ${notional:,.0f} | Premium: ${premium:,.0f}")
+                    
+                    # Break-even calculation
+                    strike = rec['strike_price']
+                    premium_pct = (premium / notional) * 100
+                    break_even_drop = ((rec.get('strike_price', 0) / (notional / contracts)) - 1) * 100 if contracts > 0 else -10
+                    
+                    lines.append(f"  Strike: ${strike:,.0f} | Cost: {premium_pct:.1f}%")
                 else:
-                    lines.append(f"  {rec['action']} {rec['underlying']} -{rec['strike_pct']:.0%}")
+                    # Estimate
+                    premium = rec['max_premium_usd']
+                    total_premium += premium
+                    lines.append(f"PUT {underlying}: ${notional:,.0f} (est. ${premium:,.0f})")
+            
+            # Economic summary
+            if total_premium > 0:
+                lines.append("")
+                premium_pct = (total_premium / d.total_tvl) * 100
+                lines.append(f"📊 Total cost: ${total_premium:,.0f} ({premium_pct:.2f}% of TVL)")
                 
-                # Strike price
-                if rec.get('strike_price'):
-                    lines.append(f"  Страйк: ${rec['strike_price']:,.0f}")
+                # Break-even scenarios
+                lines.append("Break-even: hedge pays off if drop >~13%")
                 
-                lines.append(f"  Срок: {rec['expiry_days']}d")
-                lines.append(f"  Notional: ${rec['notional_usd']:,.0f}")
-                
-                # Show real premium if available
-                if rec.get('mark_price'):
-                    lines.append(f"  Премия: ${rec['max_premium_usd']:.2f} (mark: ${rec['mark_price']:.2f})")
+                # Is it worth it?
+                if d.hedge_score >= 0.7:
+                    lines.append("✓ High risk - hedge justified")
+                elif d.hedge_score >= 0.5:
+                    lines.append("~ Moderate risk - consider partial hedge")
                 else:
-                    lines.append(f"  Max премия: ${rec['max_premium_usd']:.0f}")
-                
-                # Show IV if available
-                if rec.get('iv'):
-                    lines.append(f"  IV: {rec['iv']*100:.1f}%")
-                
-                # Show bid/ask if available
-                if rec.get('bid_price') and rec.get('ask_price'):
-                    lines.append(f"  Bid/Ask: ${rec['bid_price']:.2f}/${rec['ask_price']:.2f}")
-                
-                lines.append(f"  Площадка: {rec['platform']}")
-        
-        # Partial hedge warning
-        partial_positions = [c for c in self.classifications if c.hedge_type == 'partial']
-        if partial_positions and d.action == 'HEDGE':
-            lines.append("")
-            total_partial = sum(c.balance_usd for c in partial_positions)
-            lines.append(f"⚠️ Частичный хедж: ${total_partial:,.0f}")
-            lines.append("PUT на один актив не компенсирует IL полностью")
+                    lines.append("? Low risk - hedge may be expensive")
         
         return "\n".join(lines)
     
