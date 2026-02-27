@@ -182,7 +182,7 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     lines.append("")
     
     # ══════════════════════════════════════════════════════
-    # 3. SPOT POSITIONS - Fixed contradiction
+    # 3. SPOT POSITIONS - Only confidence-adjusted
     # ══════════════════════════════════════════════════════
     if allocation:
         btc = allocation.get("btc", {})
@@ -195,28 +195,17 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
         
         # Only show if there's a signal
         if btc_action != "HOLD" or eth_action != "HOLD":
-            lines.append("📉 SPOT BIAS (base signal):")
-            
-            if btc_size != 0:
-                lines.append(f"  BTC: {btc_size:+.0%}")
-            if eth_size != 0:
-                lines.append(f"  ETH: {eth_size:+.0%}")
-            
-            lines.append(f"  Model confidence: {conf_pct}% ({'low' if conf_pct < 40 else 'moderate' if conf_pct < 60 else 'high'})")
-            
             # Confidence-adjusted exposure
             adj_btc = btc_size * conf_adj
             adj_eth = eth_size * conf_adj
             
-            lines.append("")
-            lines.append("Confidence-adjusted exposure:")
+            lines.append(f"📉 SPOT EXPOSURE (conf-adjusted, {conf_pct}%):")
             if btc_size != 0:
                 lines.append(f"  BTC: {adj_btc:+.0%}")
             if eth_size != 0:
                 lines.append(f"  ETH: {adj_eth:+.0%}")
             
             lines.append("")
-            lines.append("Interpretation:")
             
             # Generate interpretation based on signals
             if btc_size < 0:
@@ -232,15 +221,11 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
                 reliability = "статистическая устойчивость высокая"
             
             if vol_z > 1.5:
-                vol_note = "Высокая волатильность повышает риск резких контртрендовых движений."
+                vol_note = " Высокая волатильность повышает риск контртрендовых движений."
             else:
                 vol_note = ""
             
-            interp = f"  Сигнал {signal_type}, {reliability}."
-            if vol_note:
-                interp += f" {vol_note}"
-            
-            lines.append(interp)
+            lines.append(f"  → Сигнал {signal_type}, {reliability}.{vol_note}")
             lines.append("")
     
     # ══════════════════════════════════════════════════════
