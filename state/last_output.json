@@ -1,6 +1,6 @@
 {
   "risk": {
-    "risk_level": -0.7274,
+    "risk_level": -0.7663,
     "risk_state": "RISK_OFF",
     "strength": "extreme",
     "risk_exposure_cap": 0.1,
@@ -12,78 +12,78 @@
   },
   "regime": "BEAR",
   "probabilities": {
-    "BULL": 0.0846,
-    "BEAR": 0.4322,
-    "RANGE": 0.0551,
-    "TRANSITION": 0.4281
+    "BULL": 0.0695,
+    "BEAR": 0.4175,
+    "RANGE": 0.0478,
+    "TRANSITION": 0.4652
   },
   "confidence": {
-    "base": 0.2106,
-    "quality_adjusted": 0.1536,
+    "base": 0.2416,
+    "quality_adjusted": 0.1753,
     "churn_penalty": 1.0,
     "switches_30d": 0
   },
   "buckets": {
-    "Momentum": -0.5019,
-    "Stability": -0.4079,
-    "Rotation": -0.5225,
-    "Sentiment": -0.544,
-    "Macro": -0.1726
+    "Momentum": -0.4446,
+    "Stability": -0.6302,
+    "Rotation": 0.8375,
+    "Sentiment": 0.1097,
+    "Macro": -0.154
   },
   "bucket_details": {
     "momentum": {
-      "roc_blend_z": -0.20924700655301734,
-      "trend_strength_z": -0.607414163414431,
+      "roc_blend_z": -0.10084806013766458,
+      "trend_strength_z": -0.607414163461461,
       "alignment": -1.0,
-      "dtmc_z": -0.35158552899835394,
-      "absolute_momentum": -0.5214545597029507
+      "dtmc_z": -0.18132290330012427,
+      "absolute_momentum": -0.5081939969749949
     },
     "stability": {
-      "neg_vol_z": -0.769128364315774,
-      "liquidity_z": 0.047239614080042,
-      "depth_z": -0.4669384351233431
+      "neg_vol_z": -0.7710406364815452,
+      "liquidity_z": -0.44044258549784226,
+      "depth_z": -0.6706836178639847
     },
     "rotation": {
-      "velocity_z": -0.6855802957953604,
-      "accel_z": -0.605880311910012
+      "velocity_z": 1.1353366471395223,
+      "accel_z": 0.3908205431398491
     },
     "sentiment": {
       "fg_score": -1.0,
-      "funding_score": 0.03676953823733753,
-      "oi_score": -0.8348488502395296,
-      "fg_raw": 11
+      "funding_score": 0.9722237953866416,
+      "oi_score": 0.28337677613045387,
+      "fg_raw": 13
     },
     "macro": {
-      "dollar_signal": -0.3174978976633855,
-      "rate_signal": 1.6132053732665463,
-      "yc_z": -1.2339589797176889,
-      "m2_z": -0.9354085752284415
+      "dollar_signal": -0.040891332426504286,
+      "rate_signal": 1.4140576296818592,
+      "yc_z": -1.3830276827959844,
+      "m2_z": -0.8744692002283337
     }
   },
   "cross_asset": {
-    "corr_BTC_SPX": 0.266,
-    "corr_BTC_Gold": 0.016,
+    "corr_BTC_SPX": 0.264,
+    "corr_BTC_Gold": 0.015,
     "macro_weight_boost": 1.0
   },
   "bucket_health": {
     "effective_dimensionality": 3,
     "pairwise_correlations": {
-      "Momentum/Stability": 0.795,
-      "Momentum/Rotation": -0.077,
-      "Momentum/Sentiment": 0.039,
-      "Momentum/Macro": -0.653,
-      "Stability/Rotation": -0.425,
-      "Stability/Sentiment": -0.151,
-      "Stability/Macro": -0.614,
-      "Rotation/Sentiment": 0.234,
-      "Rotation/Macro": -0.091,
-      "Sentiment/Macro": -0.22
+      "Momentum/Stability": 0.803,
+      "Momentum/Rotation": 0.054,
+      "Momentum/Sentiment": 0.145,
+      "Momentum/Macro": -0.659,
+      "Stability/Rotation": -0.314,
+      "Stability/Sentiment": -0.072,
+      "Stability/Macro": -0.627,
+      "Rotation/Sentiment": 0.311,
+      "Rotation/Macro": -0.138,
+      "Sentiment/Macro": -0.255
     },
     "flags": [
-      "ANOMALOUS_CORR_Momentum_Stability: 0.79",
-      "REDUNDANCY_Momentum_Stability: |corr|=0.79",
-      "ANOMALOUS_CORR_Momentum_Macro: -0.65",
-      "ANOMALOUS_CORR_Stability_Macro: -0.61"
+      "ANOMALOUS_CORR_Momentum_Stability: 0.80",
+      "REDUNDANCY_Momentum_Stability: |corr|=0.80",
+      "ANOMALOUS_CORR_Momentum_Macro: -0.66",
+      "ANOMALOUS_CORR_Stability_Macro: -0.63"
     ]
   },
   "regime_dynamics": {
@@ -122,10 +122,10 @@
   },
   "exposure_cap": 0.1,
   "risk_flags": [
-    "ANOMALOUS_CORR_Momentum_Stability: 0.79",
-    "REDUNDANCY_Momentum_Stability: |corr|=0.79",
-    "ANOMALOUS_CORR_Momentum_Macro: -0.65",
-    "ANOMALOUS_CORR_Stability_Macro: -0.61",
+    "ANOMALOUS_CORR_Momentum_Stability: 0.80",
+    "REDUNDANCY_Momentum_Stability: |corr|=0.80",
+    "ANOMALOUS_CORR_Momentum_Macro: -0.66",
+    "ANOMALOUS_CORR_Stability_Macro: -0.63",
     "TRANSITION_STICKY: self-transition=0.93"
   ],
   "normalization": {
@@ -135,43 +135,42 @@
   },
   "metadata": {
     "model_version": "3.3",
-    "days_in_regime": 30,
+    "days_in_regime": 31,
     "temperature": 1.0,
     "smoothing_alpha": 0.3,
-    "vol_z": 0.7691,
+    "vol_z": 0.771,
     "data_completeness": 1.0,
     "failed_sources": [],
-    "timestamp": "2026-02-26T15:42:24.790807",
-    "btc_price": 67214.1328125,
-    "eth_price": 2024.18,
-    "returns_30d": -0.2463
+    "timestamp": "2026-02-27T04:52:36.142146",
+    "btc_price": 67816.953125,
+    "eth_price": 2047.49,
+    "returns_30d": -0.2396
   },
   "lp_policy": {
     "lp_regime": "BREAKOUT",
-    "risk_lp": 0.1,
+    "risk_lp": 0.14,
     "risk_quadrant": "Q2",
-    "fee_variance_ratio": 1.63,
-    "uncertainty_value": 0.79,
-    "trend_persistence": 0.459,
+    "fee_variance_ratio": 1.78,
+    "uncertainty_value": 0.78,
+    "trend_persistence": 0.392,
     "vol_structure": "LOW_VOL",
     "max_exposure": 0.2,
-    "effective_exposure": 0.03,
+    "effective_exposure": 0.02,
     "range_width": "wide",
     "rebalance": "cautious",
     "hedge_recommended": true,
     "signals": [
       "High uncertainty \u2192 fee opportunity",
-      "Persistence high but unstable (churn)",
       "Q2: Dir risk high, LP opportunity exists",
       "Structural break \u2192 conservative"
     ],
-    "confidence": 0.64
+    "confidence": 0.66
   },
   "asset_allocation": {
     "btc": {
       "action": "STRONG_SELL",
       "size_pct": -0.3,
-      "confidence": 0.1536,
+      "confidence": 0.1753,
       "stance": "RISK_OFF",
       "blocked_by": null,
       "reasoning": [
@@ -182,7 +181,7 @@
     "eth": {
       "action": "STRONG_SELL",
       "size_pct": -0.5,
-      "confidence": 0.1536,
+      "confidence": 0.1753,
       "stance": "RISK_OFF",
       "blocked_by": null,
       "reasoning": [
