@@ -154,13 +154,17 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     lines.append("")
     
     # Risk components with Russian comments
-    # Volatility
+    # Volatility - SYNCHRONIZED with tail_active
+    # Если tail_active, но vol_z низкий - это structural risk, не volatility
     if vol_z > 2.0:
         vol_regime = "TAIL (p95+)"
         vol_comment = "Волатильность выше 95-го перцентиля; повышена вероятность резких импульсов."
-    elif vol_z > 1.5:
+    elif vol_z > 1.5 or tail_active:
         vol_regime = "ELEVATED"
-        vol_comment = "Волатильность повышена; рекомендуется снижение размера позиций."
+        if tail_active and vol_z <= 1.5:
+            vol_comment = "Структурный риск повышен; волатильность может резко вырасти."
+        else:
+            vol_comment = "Волатильность повышена; рекомендуется снижение размера позиций."
     elif vol_z > 1.0:
         vol_regime = "MODERATE"
         vol_comment = "Волатильность умеренно повышена."
@@ -222,6 +226,8 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
             
             if vol_z > 1.5:
                 vol_note = " Высокая волатильность повышает риск контртрендовых движений."
+            elif tail_active:
+                vol_note = " Повышенный направленный риск."
             else:
                 vol_note = ""
             
@@ -274,8 +280,14 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     # ══════════════════════════════════════════════════════
     display_flags = []
     
+    # Tail risk flag - text depends on actual volatility
     if tail_active:
-        display_flags.append("Tail risk (экстремальная волатильность)")
+        if vol_z > 2.0:
+            display_flags.append("Tail risk (экстремальная волатильность)")
+        elif vol_z > 1.5:
+            display_flags.append("Tail risk (повышенная волатильность)")
+        else:
+            display_flags.append("Structural risk (повышенный направленный риск)")
     
     if struct_break:
         display_flags.append("Structure break (слом структуры)")
@@ -298,7 +310,7 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     # ══════════════════════════════════════════════════════
     # FOOTER
     # ══════════════════════════════════════════════════════
-    lines.append("v3.6")
+    lines.append("v3.7")
     
     return "\n".join(lines)
 
@@ -329,11 +341,14 @@ def _generate_analytical_comment(
     
     parts = []
     
-    # Volatility state
-    if vol_z > 2.0 or tail_active:
+    # Volatility state - SYNCHRONIZED
+    # Only say "extreme" if vol_z actually high
+    if vol_z > 2.0:
         vol_state = "Экстремальная волатильность"
     elif vol_z > 1.5:
         vol_state = "Повышенная волатильность"
+    elif tail_active:
+        vol_state = "Повышенный структурный риск"
     else:
         vol_state = None
     
