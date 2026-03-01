@@ -1,12 +1,13 @@
 """
-Telegram Bot — Action-First UI v1.1
-With Cycle Position support.
+Telegram Bot — Action-First UI
 One screen → one decision.
 """
 
 import os
 import logging
 import requests
+
+import settings as cfg
 
 logger = logging.getLogger(__name__)
 
@@ -17,291 +18,477 @@ logger = logging.getLogger(__name__)
 
 def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     """
-    Action-first format with cycle position.
-    Decision in 5 seconds.
+    Structured risk-focused format.
+    Metric names: English
+    Comments: Russian
     """
     meta = output.get("metadata", {})
     risk = output.get("risk", {})
     conf = output.get("confidence", {})
     buckets = output.get("buckets", {})
     regime = output.get("regime", "?")
+    probs = output.get("probabilities", {})
     flags = output.get("risk_flags", [])
     norm = output.get("normalization", {})
     
     btc_price = meta.get("btc_price", 0)
+    eth_price = meta.get("eth_price", 0)
     risk_level = risk.get("risk_level", 0)
     conf_adj = conf.get("quality_adjusted", 0)
     days = meta.get("days_in_regime", 0)
+    vol_z = meta.get("vol_z", 0)
     struct_break = norm.get("break_active", False)
+    mom = buckets.get("Momentum", 0)
     
-    # Determine action state
+    # Tail risk
     tail_active = False
     tail_polarity = None
     if allocation:
         tail_active = allocation.get("meta", {}).get("tail_risk_active", False)
         tail_polarity = allocation.get("meta", {}).get("tail_polarity", "downside")
     
-    # Risk state
-    if risk_level < -0.5:
-        risk_state = "RISK-OFF"
-        risk_emoji = "🔴"
-    elif risk_level < 0:
-        risk_state = "CAUTIOUS"
-        risk_emoji = "🟡"
-    elif risk_level < 0.5:
-        risk_state = "NEUTRAL"
-        risk_emoji = "⚪"
-    else:
-        risk_state = "RISK-ON"
-        risk_emoji = "🟢"
+    conf_pct = int(conf_adj * 100)
     
     lines = []
     
     # ══════════════════════════════════════════════════════
-    # HEADER: ACTION REQUIRED or STATUS
+    # 1. MARKET PHASE - Visual scale
     # ══════════════════════════════════════════════════════
-    lines.append("━" * 36)
     
-    if tail_active:
-        lines.append(f"🚨 ACTION REQUIRED · {risk_state}")
-    elif risk_level < -0.3:
-        lines.append(f"⚠️ CAUTION · {risk_state}")
+    # Position marker based on regime
+    phase_positions = {
+        "BULL": 0,
+        "RANGE": 1, 
+        "TRANSITION": 2,
+        "BEAR": 3
+    }
+    current_pos = phase_positions.get(regime, 2)
+    
+    # Build scale line
+    scale_labels = "BULL ─── RANGE ─── TRANSITION ─── BEAR"
+    # Marker positions (approximate character positions)
+    marker_positions = [2, 13, 26, 43]
+    marker_line = " " * marker_positions[current_pos] + "▲"
+    
+    lines.append(scale_labels)
+    lines.append(marker_line)
+    lines.append("")
+    
+    # Regime emoji and info
+    regime_emoji = {"BULL": "🟢", "BEAR": "🔴", "RANGE": "🟡", "TRANSITION": "⚪"}.get(regime, "⚪")
+    
+    # Visual confidence bar
+    filled = int(conf_adj * 10)
+    empty = 10 - filled
+    conf_bar = '█' * filled + '░' * empty
+    
+    lines.append(f"{regime_emoji} {regime} ({days}d)")
+    lines.append(f"[{conf_bar}] {conf_pct}%")
+    
+    # Directional pressure
+    if risk_level < 0:
+        lines.append(f"↓ Downside pressure. Dir: ↓ {abs(risk_level):.2f}")
     else:
-        lines.append(f"📊 STATUS · {risk_state}")
+        lines.append(f"↑ Upside pressure. Dir: ↑ {abs(risk_level):.2f}")
     
-    lines.append("━" * 36)
-    lines.append(f"BTC ${btc_price:,.0f}")
+    lines.append("")
+    
+    # Regime probabilities with visual bars
+    prob_bull = probs.get("BULL", 0)
+    prob_bear = probs.get("BEAR", 0)
+    prob_range = probs.get("RANGE", 0)
+    prob_trans = probs.get("TRANSITION", 0)
+    
+    def make_bar(value, width=12):
+        filled = int(value * width)
+        return "█" * filled + "░" * (width - filled)
+    
+    lines.append("Regime probabilities:")
+    lines.append(f"BULL       {make_bar(prob_bull)} {int(prob_bull*100)}%")
+    lines.append(f"BEAR       {make_bar(prob_bear)} {int(prob_bear*100)}%")
+    lines.append(f"RANGE      {make_bar(prob_range)} {int(prob_range*100)}%")
+    lines.append(f"TRANSITION {make_bar(prob_trans)} {int(prob_trans*100)}%")
+    
+    lines.append("")
+    
+    # AI Comment - analytical, no emotions
+    ai_comment = _generate_analytical_comment(
+        regime=regime,
+        prob_bear=prob_bear,
+        prob_trans=prob_trans,
+        prob_bull=prob_bull,
+        conf_pct=conf_pct,
+        dir_value=risk_level,
+        tail_active=tail_active,
+        struct_break=struct_break,
+        vol_z=vol_z
+    )
+    lines.append(f"→ {ai_comment}")
+    
     lines.append("")
     
     # ══════════════════════════════════════════════════════
-    # MARKET STATE (compact)
+    # 2. RISK SCALE
     # ══════════════════════════════════════════════════════
-    lines.append(f"{risk_emoji} MARKET: {regime}")
     
-    # Phase
-    if days <= 1:
-        phase = "early"
-    elif days <= 7:
-        phase = f"{days}d"
-    else:
-        phase = f"{days}d mature"
-    
-    conf_pct = int(conf_adj * 100)
-    
-    # Confidence interpretation
-    if conf_adj < 0.25:
-        conf_label = "LOW"
-    elif conf_adj < 0.50:
-        conf_label = "MEDIUM"
-    else:
-        conf_label = "HIGH"
-    
-    lines.append(f"   {phase} · confidence {conf_label} ({conf_pct}%)")
-    
-    # Tail risk indicator
+    # Determine risk state
     if tail_active:
-        if tail_polarity == "downside":
-            lines.append(f"   Tail risk: HIGH ↓")
-        else:
-            lines.append(f"   Tail risk: HIGH ↑")
-    
-    # One-line summary
-    if regime == "BEAR":
-        lines.append(f"→ Рынок опасен. Защита капитала.")
-    elif regime == "BULL":
-        lines.append(f"→ Рынок растёт. Можно рисковать.")
-    elif regime == "TRANSITION":
-        lines.append(f"→ Неопределённость. Ждём ясности.")
+        risk_state = "TAIL"
+        risk_pos = 2
+    elif vol_z > 1.5 or struct_break:
+        risk_state = "ELEVATED"
+        risk_pos = 1
+    elif vol_z > 2.5:
+        risk_state = "CRISIS"
+        risk_pos = 3
     else:
-        lines.append(f"→ Боковик. Нет направления.")
+        risk_state = "NORMAL"
+        risk_pos = 0
+    
+    lines.append("⚠️ RISK SCALE")
+    risk_scale = "NORMAL ─── ELEVATED ─── TAIL ─── CRISIS"
+    risk_marker_positions = [3, 18, 32, 42]
+    risk_marker_line = " " * risk_marker_positions[risk_pos] + "▲"
+    lines.append(risk_scale)
+    lines.append(risk_marker_line)
+    lines.append("")
+    
+    # Risk components with Russian comments
+    # Volatility - SYNCHRONIZED with tail_active
+    # Если tail_active, но vol_z низкий - это structural risk, не volatility
+    if vol_z > 2.0:
+        vol_regime = "TAIL (p95+)"
+        vol_comment = "Волатильность выше 95-го перцентиля; повышена вероятность резких импульсов."
+    elif vol_z > 1.5 or tail_active:
+        vol_regime = "ELEVATED"
+        if tail_active and vol_z <= 1.5:
+            vol_comment = "Структурный риск повышен; волатильность может резко вырасти."
+        else:
+            vol_comment = "Волатильность повышена; рекомендуется снижение размера позиций."
+    elif vol_z > 1.0:
+        vol_regime = "MODERATE"
+        vol_comment = "Волатильность умеренно повышена."
+    else:
+        vol_regime = "NORMAL"
+        vol_comment = "Волатильность в пределах нормы."
+    
+    lines.append(f"Volatility: {vol_regime}")
+    lines.append(f"  → {vol_comment}")
+    
+    # Structure
+    if struct_break:
+        lines.append("Structure: BREAK")
+        lines.append("  → Нарушена рыночная структура; фаза перераспределения.")
+    else:
+        lines.append("Structure: INTACT")
+        lines.append("  → Структура сохранена.")
+    
+    lines.append("")
     
     # ══════════════════════════════════════════════════════
-    # DIRECTIONAL POLICY with CYCLE POSITION
+    # 3. SPOT POSITIONS - Only confidence-adjusted
     # ══════════════════════════════════════════════════════
     if allocation:
         btc = allocation.get("btc", {})
         eth = allocation.get("eth", {})
-        cycle = allocation.get("cycle", {})
         
         btc_action = btc.get("action", "HOLD")
         eth_action = eth.get("action", "HOLD")
         btc_size = btc.get("size_pct", 0)
         eth_size = eth.get("size_pct", 0)
         
-        lines.append("")
-        lines.append("━" * 36)
-        lines.append("📉 DIRECTIONAL")
-        lines.append("━" * 36)
-        
-        # Cycle position bar (if available)
-        if cycle:
-            cycle_pos = cycle.get("cycle_position", 50)
-            phase_name = cycle.get("phase", "")
-            bottom_prox = cycle.get("bottom_proximity", 0)
-            top_prox = cycle.get("top_proximity", 0)
-            bt_signal = cycle.get("bottom_top_signal", "")
+        # Only show if there's a signal
+        if btc_action != "HOLD" or eth_action != "HOLD":
+            # Confidence-adjusted exposure
+            adj_btc = btc_size * conf_adj
+            adj_eth = eth_size * conf_adj
             
-            # Visual cycle bar
-            bar_pos = int(cycle_pos / 10)
-            bar = "─" * bar_pos + "●" + "─" * (10 - bar_pos)
-            lines.append(f"BOTTOM [{bar}] TOP")
-            lines.append(f"       {cycle_pos:.0f}/100 · {phase_name}")
-            
-            # Bottom/Top signal highlight
-            if bt_signal and bt_signal not in ["NO_SIGNAL", ""]:
-                if "GLOBAL_BOTTOM" in bt_signal:
-                    lines.append(f"🟢🟢 {bt_signal} — редкий сигнал!")
-                elif "LOCAL_BOTTOM" in bt_signal:
-                    lines.append(f"🟢 {bt_signal}")
-                elif "GLOBAL_TOP" in bt_signal:
-                    lines.append(f"🔴🔴 {bt_signal} — редкий сигнал!")
-                elif "LOCAL_TOP" in bt_signal:
-                    lines.append(f"🔴 {bt_signal}")
-            
-            # Proximity indicators
-            if bottom_prox >= 0.5:
-                lines.append(f"   ↓ Bottom proximity: {bottom_prox:.0%}")
-            if top_prox >= 0.5:
-                lines.append(f"   ↑ Top proximity: {top_prox:.0%}")
+            lines.append(f"📉 SPOT EXPOSURE (conf-adjusted, {conf_pct}%):")
+            if btc_size != 0:
+                lines.append(f"  BTC: {adj_btc:+.0%}")
+            if eth_size != 0:
+                lines.append(f"  ETH: {adj_eth:+.0%}")
             
             lines.append("")
-        
-        # Actions with emoji
-        action_emoji = {
-            "STRONG_BUY": "🟢🟢",
-            "BUY": "🟢",
-            "HOLD": "⚪",
-            "SELL": "🔴",
-            "STRONG_SELL": "🔴🔴",
-        }
-        
-        btc_emoji = action_emoji.get(btc_action, "⚪")
-        eth_emoji = action_emoji.get(eth_action, "⚪")
-        
-        btc_str = f"{btc_size:+.0%}" if btc_size != 0 else ""
-        eth_str = f"{eth_size:+.0%}" if eth_size != 0 else ""
-        
-        lines.append(f"BTC: {btc_emoji} {btc_action} {btc_str}")
-        lines.append(f"ETH: {eth_emoji} {eth_action} {eth_str}")
-        
-        # Reasons (compact, grouped)
-        primary_reasons = []
-        secondary_reasons = []
-        
-        mom = buckets.get("Momentum", 0)
-        
-        # Primary reasons
-        if mom < -0.5:
-            primary_reasons.append("downtrend")
-        elif mom > 0.5:
-            primary_reasons.append("uptrend")
-        
-        if tail_active:
-            primary_reasons.append("tail-risk")
-        
-        # Cycle-based reason
-        if cycle:
-            bt = cycle.get("bottom_top_signal", "")
-            if "BOTTOM" in bt:
-                primary_reasons.append("near bottom")
-            elif "TOP" in bt:
-                primary_reasons.append("near top")
-        
-        # Secondary reasons (in parentheses)
-        if conf_adj < 0.30:
-            secondary_reasons.append("low confidence")
-        
-        if btc.get("blocked_by"):
-            secondary_reasons.append(f"blocked: {btc['blocked_by'].lower()}")
-        
-        if primary_reasons or secondary_reasons:
-            reason_str = " + ".join(primary_reasons) if primary_reasons else ""
-            if secondary_reasons:
-                sec_str = ", ".join(secondary_reasons)
-                if reason_str:
-                    reason_str += f" ({sec_str})"
-                else:
-                    reason_str = sec_str
-            lines.append(f"   → {reason_str}")
+            
+            # Generate interpretation based on signals
+            if btc_size < 0:
+                signal_type = "медвежий"
+            else:
+                signal_type = "бычий"
+            
+            if conf_pct < 30:
+                reliability = "статистическая устойчивость низкая"
+            elif conf_pct < 50:
+                reliability = "статистическая устойчивость умеренная"
+            else:
+                reliability = "статистическая устойчивость высокая"
+            
+            if vol_z > 1.5:
+                vol_note = " Высокая волатильность повышает риск контртрендовых движений."
+            elif tail_active:
+                vol_note = " Повышенный направленный риск."
+            else:
+                vol_note = ""
+            
+            lines.append(f"  → Сигнал {signal_type}, {reliability}.{vol_note}")
+            lines.append("")
     
     # ══════════════════════════════════════════════════════
-    # LP POLICY (separate)
+    # 4. LP POLICY - Keep as is (good)
     # ══════════════════════════════════════════════════════
     if lp_policy:
         risk_lp = lp_policy.risk_lp
         risk_dir = lp_policy.risk_directional
         quadrant = lp_policy.risk_quadrant.value
         fv = lp_policy.fee_variance_ratio
-        eff = int(lp_policy.effective_exposure * 100)
+        max_exp = int(lp_policy.max_exposure * 100)
         hedge = lp_policy.hedge_recommended
+        range_width = lp_policy.range_width
         
-        lines.append("")
-        lines.append("━" * 36)
+        # Simple quadrant description
+        quadrant_desc = {
+            "Q1": "🟢 LP: Ideal conditions",
+            "Q2": "🔵 LP: Good, but hedge needed",
+            "Q3": "🟡 LP: Spot preferred",
+            "Q4": "🔴 LP: Minimize exposure",
+        }
+        lines.append(quadrant_desc.get(quadrant, f"LP: {quadrant}"))
         
-        # LP header reflects constraint status
-        if eff < int(lp_policy.max_exposure * 100) * 0.5:
-            lines.append("💧 LP POLICY (CONSTRAINED · SECONDARY)")
+        # Key metrics
+        lines.append(f"  Exposure: {max_exp}% | Range: {range_width}")
+        
+        # Fee vs IL ratio
+        if fv >= 1.5:
+            lines.append(f"  Fees vs IL: {fv:.1f}x ✓")
+        elif fv >= 1.0:
+            lines.append(f"  Fees vs IL: {fv:.1f}x (marginal)")
         else:
-            lines.append("💧 LP POLICY (SECONDARY)")
-        
-        lines.append("━" * 36)
-        
-        lines.append(f"Quadrant: {quadrant}")
-        lines.append(f"Dir: {risk_dir:+.2f} · LP: {risk_lp:+.2f} · F/V: {fv:.1f}x")
-        
-        # LP Action
-        lines.append("")
-        lines.append(f"Exposure: {eff}%")
-        
-        range_ru = {
-            "tight": "tight", "standard": "std", "moderate": "med",
-            "wide": "wide", "very_wide": "v.wide"
-        }.get(lp_policy.range_width, lp_policy.range_width)
-        
-        lines.append(f"Range: {range_ru}")
+            lines.append(f"  Fees vs IL: {fv:.1f}x (IL превышает)")
         
         if hedge:
-            lines.append(f"Hedge: REQUIRED")
+            lines.append(f"  Hedge: REQUIRED")
         
-        # Note for Q2
-        if quadrant == "Q2" and risk_lp > 0:
-            lines.append("")
-            lines.append("Note: LP edge exists, but")
-            lines.append("capital at risk is capped.")
-    
-    # ══════════════════════════════════════════════════════
-    # FLAGS (if critical) - ordered by severity
-    # ══════════════════════════════════════════════════════
-    critical_flags = []
-    
-    # Priority 1: Tail risk
-    if tail_active:
-        critical_flags.append("Tail risk active")
-    
-    # Priority 2: Structure break
-    if struct_break:
-        critical_flags.append("Market structure break")
-    
-    # Priority 3: Data issues
-    if any("DATA" in f for f in flags):
-        critical_flags.append("Partial data")
-    
-    if critical_flags:
+        # LP comment
+        lp_comment = _get_lp_comment(quadrant, risk_lp, risk_dir, max_exp, max_exp)
+        lines.append(f"  → {lp_comment}")
+        
         lines.append("")
-        lines.append("━" * 36)
-        lines.append("⚠️ FLAGS")
-        lines.append("━" * 36)
-        for f in critical_flags[:3]:
-            lines.append(f"• {f}")
+    
+    # ══════════════════════════════════════════════════════
+    # 5. FLAGS - Fully restored
+    # ══════════════════════════════════════════════════════
+    display_flags = []
+    
+    # Tail risk flag - text depends on actual volatility
+    if tail_active:
+        if vol_z > 2.0:
+            display_flags.append("Tail risk (экстремальная волатильность)")
+        elif vol_z > 1.5:
+            display_flags.append("Tail risk (повышенная волатильность)")
+        else:
+            display_flags.append("Structural risk (повышенный направленный риск)")
+    
+    if struct_break:
+        display_flags.append("Structure break (слом структуры)")
+    
+    # Data quality
+    data_quality = meta.get("data_completeness", 1.0)
+    failed_sources = meta.get("failed_sources", [])
+    
+    if failed_sources:
+        display_flags.append(f"Нет данных: {', '.join(failed_sources)}")
+    elif data_quality < 0.85:
+        display_flags.append("Partial data — проверь источники")
+    
+    if display_flags:
+        lines.append("FLAGS")
+        for f in display_flags:
+            lines.append(f"  • {f}")
+        lines.append("")
     
     # ══════════════════════════════════════════════════════
     # FOOTER
     # ══════════════════════════════════════════════════════
-    lines.append("")
-    lines.append("━" * 36)
-    lines.append(f"v3.3 · LP v2.0.1 · AA v1.3.1 · Cycle v1.0")
+    lines.append("v3.7")
     
     return "\n".join(lines)
+
+
+def _generate_analytical_comment(
+    regime: str,
+    prob_bear: float,
+    prob_trans: float,
+    prob_bull: float,
+    conf_pct: int,
+    dir_value: float,
+    tail_active: bool,
+    struct_break: bool,
+    vol_z: float
+) -> str:
+    """
+    Generate analytical comment without emotional language.
+    
+    Requirements:
+    - No emotional words (паника, дно, страх)
+    - No reversal predictions
+    - Reflect regime conflict
+    - Highlight low confidence
+    - Note probability of sharp moves
+    - Neutral, risk-oriented tone
+    - Max 2-3 sentences
+    """
+    
+    parts = []
+    
+    # Volatility state - SYNCHRONIZED
+    # Only say "extreme" if vol_z actually high
+    if vol_z > 2.0:
+        vol_state = "Экстремальная волатильность"
+    elif vol_z > 1.5:
+        vol_state = "Повышенная волатильность"
+    elif tail_active:
+        vol_state = "Повышенный структурный риск"
+    else:
+        vol_state = None
+    
+    # Structure state
+    struct_state = "слом структуры" if struct_break else None
+    
+    # Build first part
+    first_part_items = [x for x in [vol_state, struct_state] if x]
+    if first_part_items:
+        first_part = " и ".join(first_part_items).capitalize()
+    else:
+        first_part = None
+    
+    # Regime conflict analysis
+    max_prob = max(prob_bear, prob_trans, prob_bull)
+    second_prob = sorted([prob_bear, prob_trans, prob_bull])[-2]
+    
+    if abs(prob_bear - prob_trans) < 0.15 and prob_bear > 0.3 and prob_trans > 0.3:
+        regime_conflict = f"Конфликт TRANSITION ({int(prob_trans*100)}%) и BEAR ({int(prob_bear*100)}%) указывает на нестабильную фазу перераспределения риска."
+    elif prob_trans > prob_bear and prob_trans > 0.4:
+        regime_conflict = f"Доминирование переходного режима ({int(prob_trans*100)}%) при медвежьем уклоне."
+    elif prob_bear > 0.5:
+        regime_conflict = f"Выраженный медвежий режим ({int(prob_bear*100)}%)."
+    elif prob_bull > 0.5:
+        regime_conflict = f"Выраженный бычий режим ({int(prob_bull*100)}%)."
+    else:
+        regime_conflict = "Смешанные сигналы без выраженного доминирования."
+    
+    # Confidence impact
+    if conf_pct < 25:
+        conf_impact = f"Низкая уверенность модели ({conf_pct}%) повышает вероятность резких и разнонаправленных импульсов без устойчивого трендового подтверждения."
+    elif conf_pct < 40:
+        conf_impact = f"Умеренно низкая уверенность ({conf_pct}%) снижает надёжность текущего режима."
+    else:
+        conf_impact = None
+    
+    # Combine
+    if first_part:
+        parts.append(first_part + " " + regime_conflict.lower() if regime_conflict[0].isupper() else first_part + ".")
+        if conf_impact:
+            parts.append(conf_impact)
+    else:
+        parts.append(regime_conflict)
+        if conf_impact:
+            parts.append(conf_impact)
+    
+    return " ".join(parts)
+
+
+def _get_regime_comment(regime: str, days: int, tail_active: bool, conf: float, mom: float, risk: float) -> str:
+    """
+    Rich logic комментарий по режиму (Russian).
+    Контекстный — учитывает комбинацию факторов.
+    """
+    if regime == "BEAR":
+        if tail_active and conf < 0.25:
+            return "Паника на рынке. Возможно близко дно — не лучшее время продавать."
+        elif tail_active:
+            return "Сильный стресс. Защита капитала, но осторожно с продажами на лоях."
+        elif days <= 2:
+            return "Начало коррекции. Наблюдаем глубину падения."
+        elif days > 14 and mom > -0.3:
+            return "Затяжной медвежий тренд, но импульс слабеет. Возможен разворот."
+        elif days > 14:
+            return "Затяжной медвежий тренд. Терпение, ждём сигналы разворота."
+        else:
+            return "Рынок слабый. Защита капитала в приоритете."
+    
+    elif regime == "BULL":
+        if tail_active:
+            return "Рост перегрет. Фиксация прибыли разумна."
+        elif days <= 2:
+            return "Возможное начало роста. Подтверждение нужно."
+        elif days > 14 and mom < 0.3:
+            return "Зрелый бычий тренд, импульс слабеет. Осторожность."
+        elif conf >= 0.6:
+            return "Уверенный рост. Можно наращивать позиции."
+        else:
+            return "Рынок растёт. Умеренный риск допустим."
+    
+    elif regime == "TRANSITION":
+        if risk < -0.3:
+            return "Переходный период с негативным уклоном. Лучше подождать."
+        elif risk > 0.3:
+            return "Переходный период с позитивным уклоном. Наблюдаем."
+        else:
+            return "Неопределённость. Ждём ясности перед действиями."
+    
+    else:  # RANGE
+        if conf >= 0.5:
+            return "Боковик. Нет направления, но стабильно."
+        else:
+            return "Боковик с низкой уверенностью. Ждём."
+
+
+def _get_directional_comment(btc_action: str, eth_action: str, regime: str, 
+                              tail_active: bool, conf: float, mom: float) -> str:
+    """
+    Rich logic комментарий по directional (Russian).
+    """
+    if tail_active and "SELL" in btc_action:
+        if conf < 0.25:
+            return "Tail risk, но низкая уверенность — возможно паника. Осторожно."
+        else:
+            return "Tail risk активен — снижаем экспозицию."
+    
+    if btc_action == "HOLD" and eth_action == "HOLD":
+        if conf < 0.4:
+            return "Сигнал ниже порога — без действий"
+        elif regime == "TRANSITION":
+            return "Переходный режим — ждём подтверждения."
+        else:
+            return "Условия не соответствуют критериям входа/выхода."
+    
+    if "BUY" in btc_action:
+        return "Условия для наращивания позиций."
+    
+    if "SELL" in btc_action and not tail_active:
+        return "Условия для сокращения позиций."
+    
+    return ""
+
+
+def _get_lp_comment(quadrant: str, risk_lp: float, risk_dir: float, eff: int, max_exp: int) -> str:
+    """
+    Rich logic комментарий по LP (Russian).
+    """
+    if quadrant == "Q1":
+        return "Идеальные условия для LP. Низкий риск, хорошие комиссии."
+    
+    elif quadrant == "Q2":
+        return "LP профитабелен, но высокий направленный риск — нужен хедж"
+    
+    elif quadrant == "Q3":
+        return "Spot лучше LP. Направленный риск низкий, но LP не оптимален."
+    
+    elif quadrant == "Q4":
+        return "Худшие условия. Минимизируй LP экспозицию."
+    
+    return ""
 
 
 # ============================================================
@@ -336,13 +523,6 @@ def format_short(output: dict, lp_policy=None, allocation=None) -> str:
         btc_action = btc.get("action", "HOLD")
         eth_action = eth.get("action", "HOLD")
         lines.append(f"BTC {btc_action} | ETH {eth_action}")
-        
-        # Cycle signal
-        cycle = allocation.get("cycle", {})
-        if cycle:
-            bt = cycle.get("bottom_top_signal", "")
-            if bt and bt != "NO_SIGNAL":
-                lines.append(f"Cycle: {bt}")
     
     if lp_policy:
         eff = int(lp_policy.effective_exposure * 100)
