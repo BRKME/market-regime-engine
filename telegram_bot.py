@@ -9,6 +9,17 @@ import requests
 
 import settings as cfg
 
+# Cycle Position Engine
+try:
+    from cycle_position_engine import (
+        CyclePositionEngine, CycleMetrics, CyclePosition,
+        CyclePhase, BottomTopSignal, ActionSignal, create_cycle_policy
+    )
+    from cycle_metrics_collector import build_cycle_metrics, get_cycle_position
+    CYCLE_ENGINE_AVAILABLE = True
+except ImportError:
+    CYCLE_ENGINE_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -186,53 +197,11 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     lines.append("")
     
     # ══════════════════════════════════════════════════════
-    # 3. SPOT POSITIONS - Only confidence-adjusted
+    # 3. SPOT SIGNAL - Cycle Position Engine
     # ══════════════════════════════════════════════════════
-    if allocation:
-        btc = allocation.get("btc", {})
-        eth = allocation.get("eth", {})
-        
-        btc_action = btc.get("action", "HOLD")
-        eth_action = eth.get("action", "HOLD")
-        btc_size = btc.get("size_pct", 0)
-        eth_size = eth.get("size_pct", 0)
-        
-        # Only show if there's a signal
-        if btc_action != "HOLD" or eth_action != "HOLD":
-            # Confidence-adjusted exposure
-            adj_btc = btc_size * conf_adj
-            adj_eth = eth_size * conf_adj
-            
-            lines.append(f"📉 SPOT EXPOSURE (conf-adjusted, {conf_pct}%):")
-            if btc_size != 0:
-                lines.append(f"  BTC: {adj_btc:+.0%}")
-            if eth_size != 0:
-                lines.append(f"  ETH: {adj_eth:+.0%}")
-            
-            lines.append("")
-            
-            # Generate interpretation based on signals
-            if btc_size < 0:
-                signal_type = "медвежий"
-            else:
-                signal_type = "бычий"
-            
-            if conf_pct < 30:
-                reliability = "статистическая устойчивость низкая"
-            elif conf_pct < 50:
-                reliability = "статистическая устойчивость умеренная"
-            else:
-                reliability = "статистическая устойчивость высокая"
-            
-            if vol_z > 1.5:
-                vol_note = " Высокая волатильность повышает риск контртрендовых движений."
-            elif tail_active:
-                vol_note = " Повышенный направленный риск."
-            else:
-                vol_note = ""
-            
-            lines.append(f"  → Сигнал {signal_type}, {reliability}.{vol_note}")
-            lines.append("")
+    spot_lines = _format_spot_signal(allocation, conf_adj, regime, risk_level)
+    lines.extend(spot_lines)
+    lines.append("")
     
     # ══════════════════════════════════════════════════════
     # 4. LP POLICY - Keep as is (good)
@@ -310,7 +279,7 @@ def format_output(output: dict, lp_policy=None, allocation=None) -> str:
     # ══════════════════════════════════════════════════════
     # FOOTER
     # ══════════════════════════════════════════════════════
-    lines.append("v3.7")
+    lines.append("v4.0")
     
     return "\n".join(lines)
 
@@ -533,6 +502,162 @@ def format_short(output: dict, lp_policy=None, allocation=None) -> str:
         lines.append("⚠️ Tail risk active")
     
     return "\n".join(lines)
+
+
+# ============================================================
+# SPOT SIGNAL WITH CYCLE POSITION
+# ============================================================
+
+def _format_spot_signal(allocation: dict, conf_adj: float, regime: str, risk_level: float) -> list:
+    """
+    Форматирует блок SPOT SIGNAL с использованием Cycle Position Engine.
+    
+    Returns:
+        List of formatted lines
+    """
+    lines = []
+    
+    # Get cycle position data if available
+    btc_cycle = None
+    eth_cycle = None
+    
+    if CYCLE_ENGINE_AVAILABLE:
+        try:
+            _, btc_cycle = get_cycle_position("BTC")
+            _, eth_cycle = get_cycle_position("ETH")
+        except Exception as e:
+            logger.warning(f"Cycle position fetch failed: {e}")
+    
+    # Use BTC as primary signal (or fallback to allocation data)
+    if btc_cycle:
+        action = btc_cycle.action
+        action_conf = btc_cycle.action_confidence
+        phase = btc_cycle.phase
+        cycle_pos = btc_cycle.cycle_position
+        bottom_prox = btc_cycle.bottom_proximity
+        top_prox = btc_cycle.top_proximity
+        bt_signal = btc_cycle.bottom_top_signal
+        reasons = btc_cycle.reasons
+    else:
+        # Fallback: derive from allocation
+        btc = allocation.get("btc", {}) if allocation else {}
+        btc_action = btc.get("action", "HOLD")
+        btc_size = btc.get("size_pct", 0)
+        
+        # Map allocation action to ActionSignal
+        if btc_size <= -0.25:
+            action = ActionSignal.STRONG_SELL if CYCLE_ENGINE_AVAILABLE else "STRONG_SELL"
+        elif btc_size < 0:
+            action = ActionSignal.SELL if CYCLE_ENGINE_AVAILABLE else "SELL"
+        elif btc_size >= 0.25:
+            action = ActionSignal.STRONG_BUY if CYCLE_ENGINE_AVAILABLE else "STRONG_BUY"
+        elif btc_size > 0:
+            action = ActionSignal.BUY if CYCLE_ENGINE_AVAILABLE else "BUY"
+        else:
+            action = ActionSignal.HOLD if CYCLE_ENGINE_AVAILABLE else "HOLD"
+        
+        action_conf = conf_adj
+        phase = None
+        cycle_pos = 50
+        bottom_prox = 0.5
+        top_prox = 0.5
+        bt_signal = None
+        reasons = []
+    
+    # Get action string
+    if CYCLE_ENGINE_AVAILABLE and hasattr(action, 'value'):
+        action_str = action.value
+    else:
+        action_str = str(action)
+    
+    # ═══ HEADER ═══
+    lines.append("📊 SPOT SIGNAL")
+    
+    # ═══ VISUAL SIGNAL SCALE ═══
+    signal_map = {
+        "STRONG_SELL": 0,
+        "SELL": 1,
+        "HOLD": 2,
+        "BUY": 3,
+        "STRONG_BUY": 4
+    }
+    signal_pos = signal_map.get(action_str, 2)
+    
+    signal_labels = ["⬇️ STRONG SELL", "⬇️ SELL", "➡️ HOLD", "⬆️ BUY", "⬆️ STRONG BUY"]
+    
+    lines.append("┌─────────────────────────────┐")
+    for i, label in enumerate(signal_labels):
+        if i == signal_pos:
+            lines.append(f"│ {label:20} ◀──── │")
+        else:
+            lines.append(f"│ {label:25} │")
+    lines.append("└─────────────────────────────┘")
+    lines.append("")
+    
+    # ═══ PHASE & CYCLE POSITION ═══
+    if phase and CYCLE_ENGINE_AVAILABLE:
+        phase_str = phase.value if hasattr(phase, 'value') else str(phase)
+        lines.append(f"Phase: {phase_str} (conf: {int(action_conf*100)}%)")
+        
+        # Cycle position bar (0 = bottom, 100 = top)
+        cycle_filled = int(cycle_pos / 10)
+        cycle_bar = "█" * cycle_filled + "░" * (10 - cycle_filled)
+        lines.append(f"Cycle: [{cycle_bar}] {int(cycle_pos)}/100")
+        lines.append("")
+    
+    # ═══ BOTTOM/TOP PROXIMITY ═══
+    def prox_bar(value, width=10):
+        filled = int(value * width)
+        return "░" * (width - filled) + "▓" * filled
+    
+    lines.append(f"Bottom {prox_bar(bottom_prox)} {int(bottom_prox*100)}%")
+    lines.append(f"Top    {prox_bar(top_prox)} {int(top_prox*100)}%")
+    lines.append("")
+    
+    # ═══ BTC/ETH SIGNALS ═══
+    if allocation:
+        btc = allocation.get("btc", {})
+        eth = allocation.get("eth", {})
+        btc_size = btc.get("size_pct", 0)
+        eth_size = eth.get("size_pct", 0)
+        
+        adj_btc = btc_size * conf_adj
+        adj_eth = eth_size * conf_adj
+        
+        if btc_size != 0:
+            btc_action_str = "SELL" if btc_size < 0 else "BUY"
+            lines.append(f"BTC: {btc_action_str} {btc_size:+.0%} (adjusted: {adj_btc:+.0%})")
+        if eth_size != 0:
+            eth_action_str = "SELL" if eth_size < 0 else "BUY"
+            lines.append(f"ETH: {eth_action_str} {eth_size:+.0%} (adjusted: {adj_eth:+.0%})")
+        
+        if btc_size == 0 and eth_size == 0:
+            lines.append("BTC: HOLD")
+            lines.append("ETH: HOLD")
+    
+    lines.append("")
+    
+    # ═══ REASONS ═══
+    if reasons:
+        lines.append("Reasons:")
+        for r in reasons[:3]:  # Max 3 reasons
+            lines.append(f"  • {r}")
+    elif bt_signal and CYCLE_ENGINE_AVAILABLE:
+        # Generate reason from bt_signal
+        if bt_signal == BottomTopSignal.GLOBAL_BOTTOM:
+            lines.append("Reasons:")
+            lines.append("  • 🟢 ГЛОБАЛЬНОЕ ДНО — редкий сигнал!")
+        elif bt_signal == BottomTopSignal.LOCAL_BOTTOM:
+            lines.append("Reasons:")
+            lines.append("  • 🟢 Локальное дно — возможность для покупки")
+        elif bt_signal == BottomTopSignal.GLOBAL_TOP:
+            lines.append("Reasons:")
+            lines.append("  • 🔴 ГЛОБАЛЬНАЯ ВЕРШИНА — редкий сигнал!")
+        elif bt_signal == BottomTopSignal.LOCAL_TOP:
+            lines.append("Reasons:")
+            lines.append("  • 🔴 Локальная вершина — фиксируем прибыль")
+    
+    return lines
 
 
 # ============================================================
